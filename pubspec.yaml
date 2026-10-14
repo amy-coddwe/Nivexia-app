@@ -1,7 +1,7 @@
 name: nivexia_ping
-description: Nivexia Gaming Network Accelerator.
+description: Nivexia Gaming & VIP Network Accelerator.
 publish_to: 'none'
-version: 2.0.0+2
+version: 3.0.0+3
 
 environment:
   sdk: '>=3.1.0 <4.0.0'
