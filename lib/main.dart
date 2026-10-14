@@ -109,7 +109,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   int _configFailSeconds = 0;
   bool _internetIsDown = false;
 
-  // فقط و فقط سرورهایی که تست واقعی هسته Xray (getServerDelay > 0) را پاس کرده‌اند وارد این لیست می‌شوند
+  // فقط سرورهایی که از هسته Xray پینگ واقعی گرفته‌اند وارد این لیست می‌شوند
   final List<ReadyServer> _readyPool = [];
   final Set<String> _deadUris = {};
   ReadyServer? _activeServer;
@@ -171,10 +171,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       notificationIconResourceName: "ic_launcher",
     );
 
-    // شروع اسکن اولیه در پس‌زمینه (فقط زمانی که VPN قطع است)
     _runContinuousWaterfallScan();
 
-    // شارژ مجدد لیست سرورها در پس‌زمینه (فقط زمانی که VPN قطع است تا با هسته فعال تداخل نکند)
+    // شارژ مجدد لیست در پس‌زمینه (فقط زمانی که VPN قطع است تا با سرویس فعال تداخل نکند)
     _backgroundPoolTimer = Timer.periodic(const Duration(seconds: 50), (_) {
       if (!isConnected && !isConnecting && !_isScanning) {
         if (_readyPool.length < 3) {
@@ -183,7 +182,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       }
     });
 
-    // مانیتورینگ سلامت اتصال هر ۱۲ ثانیه (بدون صدا زدن متدهای تداخل‌زا روی هسته)
+    // بررسی سلامت اتصال هر ۱۲ ثانیه وقتی VPN روشن است
     _healthWatchdogTimer = Timer.periodic(const Duration(seconds: 12), (_) {
       if (isConnected && !isConnecting && !_isAutoSwitching) {
         _checkConnectionAndHandleFailover();
@@ -202,7 +201,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   // ===========================================================================
-  // ۱. پردازش و نرمال‌سازی کانفیگ‌ها
+  // ۱. استخراج و نرمال‌سازی کانفیگ‌ها (VLESS, VMess, SS, SSR)
   // ===========================================================================
 
   String _decodeBase64Safe(String input) {
@@ -290,7 +289,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           line.startsWith('vmess://') ||
           line.startsWith('ss://') ||
           line.startsWith('trojan://')) {
-        if (line.contains('ech=')) continue;
+        if (line.contains('ech=') || line.contains('allowInsecure=')) continue;
         if (_deadUris.contains(line)) continue;
         if (seenInFile.add(line)) {
           validLinks.add(line);
@@ -375,10 +374,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   // ===========================================================================
-  // ۲. اسکن پله‌ای ۳۰۰ تا ۳۰۰ تا با تست واقعی هسته Xray (فقط سرورهای ۱۰۰٪ واقعی)
+  // ۲. اسکن پله‌ای ۳۰۰ تا ۳۰۰ تا با تاییدیه واقعی هسته Xray v26.9.9
   // ===========================================================================
 
-  /// توقف کامل اسکنر قبل از روشن کردن VPN برای جلوگیری از قفل شدن تایمر و هسته Xray
   Future<void> _stopScannerAndWait() async {
     _abortScanRequested = true;
     int waitLoops = 0;
@@ -388,10 +386,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  /// اسکن یک دسته ۳۰۰ تایی:
-  /// ۱. غربال سریع آی‌پی‌های خاموش با سوکت
-  /// ۲. تست تک‌به‌تک با هسته واقعی Xray (getServerDelay)
-  /// ۳. فقط سروری وارد لیست می‌شود که پینگ واقعی از دل هسته Xray بگیرد!
   Future<int> _scan300Batch(
     List<String> batchLinks,
     String protocolName,
@@ -415,7 +409,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         final int port = parser.port;
         if (host.isEmpty || port <= 0 || host == '127.0.0.1') continue;
 
-        // استفاده مستقیم از کانفیگ استاندارد خود کتابخانه بدون دستکاری ساختار
+        // استفاده از کانفیگ استاندارد و دست‌نخورده خود کتابخانه (سازگار با Xray v26.9.9 و بدون allowInsecure)
         final String configJson = parser.getFullConfiguration();
         parsedCandidates.add(ReadyServer(
           rawUri: uri,
@@ -430,7 +424,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     if (parsedCandidates.isEmpty) return 0;
 
-    // مرحله ۱: غربال سریع ۳۰۰ سرور در دسته‌های ۳۵ تایی برای پیدا کردن سرورهایی که پورتشان باز است
+    // مرحله ۱: غربال سریع آی‌پی‌های خاموش در دسته‌های ۳۵ تایی
     const int socketConcurrency = 35;
     final List<ReadyServer> openPortServers = [];
 
@@ -451,8 +445,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     openPortServers.sort((a, b) => a.ping.compareTo(b.ping));
 
-    // مرحله ۲: تست واقعی ترافیک با هسته Xray (در دسته‌های کوچک ۳ تایی برای دقت بالا)
-    // هیچ سروری بدون پاس کردن این تست وارد لیست نمی‌شود!
+    // مرحله ۲: تست واقعی ترافیک با هسته Xray (فقط سروری که از هسته پینگ واقعی بگیرد قبول می‌شود)
     int verifiedFound = 0;
     const int xrayBatchSize = 3;
     final List<ReadyServer> topToVerify = openPortServers.take(36).toList();
@@ -474,7 +467,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               .getServerDelay(config: candidate.configJson)
               .timeout(const Duration(milliseconds: 2800), onTimeout: () => -1);
 
-          // قانون طلایی: فقط و فقط اگر هسته Xray پینگ واقعی بالای صفر داد قبول است!
           if (realDelay > 0 && realDelay < 3000) {
             candidate.ping = realDelay;
             if (!_readyPool.any((s) => s.rawUri == candidate.rawUri)) {
@@ -496,11 +488,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         } catch (_) {}
       }));
 
-      // اگر کاربر منتظر اتصال است، به محض پیدا شدن اولین سرور ۱۰۰٪ سالم متوقف شو تا درجا وصل شود!
       if (isConnecting && _readyPool.isNotEmpty) {
         break;
       }
-      // در حالت آماده به کار، وقتی ۵ سرور ۱۰۰٪ تاییدشده پیدا شد کافی است
       if (_readyPool.length >= 5) {
         break;
       }
@@ -509,7 +499,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return verifiedFound;
   }
 
-  /// اسکن آبشاری: VLESS (۳۰۰ تا ۳۰۰ تا) -> VMess (۳۰۰ تا ۳۰۰ تا) -> SS -> SSR
+  /// اسکن آبشاری: VLESS (۳۰۰ تا ۳۰۰ تا) -> VMess -> SS -> SSR
   Future<void> _runContinuousWaterfallScan() async {
     if (_isScanning || isConnected) return;
     _isScanning = true;
@@ -534,7 +524,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           if (rawBody.isNotEmpty) {
             final List<String> extracted = _extractAllConfigsFromContent(rawBody);
             if (extracted.length >= 15) {
-              // مخلوط کردن لیست تا اگر کانفیگ‌های اول فایل قدیمی بودند، از کل فایل نمونه‌برداری شود
               extracted.shuffle(Random());
               allProtocolConfigs = extracted;
               break;
@@ -544,7 +533,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
         if (allProtocolConfigs.isEmpty) continue;
 
-        // پیمایش ۳۰۰ تا ۳۰۰ تا در لیست کانفیگ‌های این پروتکل
         for (int offset = 0;
             offset < allProtocolConfigs.length;
             offset += _chunkSize) {
@@ -580,10 +568,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   // ===========================================================================
-  // ۳. سنجش پینگ بدون تداخل با سرویس VPN فعال
+  // ۳. سنجش پینگ از طریق تونل و رفرش کلیکی بالای صفحه
   // ===========================================================================
 
-  /// سنجش پینگ از طریق درخواست HTTP واقعی (بدون صدا زدن متدهای JNI که سرویس فعال را قفل می‌کنند)
   Future<int> _measureHttpPingThroughTunnel() async {
     for (final url in [
       'http://cp.cloudflare.com/generate_204',
@@ -647,7 +634,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   // ===========================================================================
-  // ۴. تشخیص هوشمند قطعی (مشکل اینترنت یا کانفیگ) + سوییچ ۳۰ ثانیه‌ای
+  // ۴. تشخیص قطعی کانفیگ یا اینترنت + سوییچ خودکار بعد از ۳۰ ثانیه
   // ===========================================================================
 
   Future<bool> _isUserInternetConnected() async {
@@ -764,16 +751,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Future<bool> _startVerifiedServer(ReadyServer srv) async {
     try {
-      // اطمینان ۱۰۰٪ از متوقف بودن اسکنر قبل از استارت سرویس VPN
       await _stopScannerAndWait();
 
       await v2ray.startV2Ray(
         remark: "Nivexia VPN (${srv.protocol})",
         config: srv.configJson,
+        blockedApps: null,
+        bypassSubnets: null,
         proxyOnly: false,
       );
 
-      // صبر برای روشن شدن سرویس در اندروید
       int waitedMs = 0;
       while (!isConnected && waitedMs < 4000) {
         if (_userCancelledConnect) {
@@ -819,7 +806,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
       if (_userCancelledConnect) return false;
 
-      // به محض اینکه حتی ۱ سرور تاییدشده در _readyPool داریم، اسکنر را متوقف می‌کنیم تا بدون تداخل وصل شود
       if (_readyPool.isNotEmpty) {
         await _stopScannerAndWait();
       }
@@ -1114,7 +1100,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                isConnected ? _formatSpeed(v2rayStatus.downloadSpeed != null ? v2rayStatus.uploadSpeed : 0) : '0 B/s',
+                                isConnected ? _formatSpeed(v2rayStatus.uploadSpeed) : '0 B/s',
                                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                               ),
                             ],
