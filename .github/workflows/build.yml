@@ -1,0 +1,46 @@
+name: Build Nivexia APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Generate Android Platform Files
+        run: |
+          flutter create --platforms=android --org com.nivexia --project-name nivexia_ping .
+
+      - name: Configure Android Manifest & Gradle for V2Ray
+        run: |
+          sed -i 's/minSdkVersion .*/minSdkVersion 21/g' android/app/build.gradle || true
+          sed -i 's/minSdk = .*/minSdk = 21/g' android/app/build.gradle || true
+          sed -i 's/android:label="nivexia_ping"/android:label="Nivexia Ping"/g' android/app/src/main/AndroidManifest.xml
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Build Release APK
+        run: flutter build apk --release --no-tree-shake-icons
+
+      - name: Upload Nivexia APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nivexia-Ping-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
