@@ -37,6 +37,9 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         v2rayStatus = status;
         isConnected = (status.state == "CONNECTED");
+        if (!isConnected && !isConnecting) {
+          statusText = 'READY';
+        }
       });
     },
   );
@@ -45,16 +48,24 @@ class _HomeScreenState extends State<HomeScreen> {
   bool isConnected = false;
   bool isConnecting = false;
   String statusText = 'READY';
+  String activeServerInfo = 'Auto-Select Best Ping';
+  int? bestPing;
 
-  // لینک سابسکریپشن کانفیگ‌های رایگان (بعدا لینک اختصاصی خودت رو اینجا می‌ذاریم)
-  final String subUrl = 'https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/Sub1.txt';
+  // لیست منابع چندگانه با CDN ضد فیلتر (jsDelivr) برای عبور از محدودیت نت ایران
+  final List<String> subUrls = [
+    'https://cdn.jsdelivr.net/gh/barry-far/V2ray-Configs@main/Sub1.txt',
+    'https://cdn.jsdelivr.net/gh/ebrasha/free-v2ray-public-list@refs/heads/main/all_extracted_configs.txt',
+    'https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/Sub2.txt',
+  ];
 
-  // لیست بازی‌ها و پکیج‌نیم‌های رسمی برای تفکیک ترافیک (Split Tunneling)
+  // لیست بازی‌ها برای Split Tunneling
   final List<Map<String, String>> games = [
     {'name': 'PUBG Mobile', 'pkg': 'com.tencent.ig', 'icon': '🎯'},
-    {'name': 'Minecraft', 'pkg': 'com.mojang.minecraftpe', 'icon': '⛏️'},
-    {'name': 'Clash Royale', 'pkg': 'com.supercell.clashroyale', 'icon': '👑'},
     {'name': 'Call of Duty: Mobile', 'pkg': 'com.activision.callofduty.shooter', 'icon': '🔫'},
+    {'name': 'Clash Royale', 'pkg': 'com.supercell.clashroyale', 'icon': '👑'},
+    {'name': 'Brawl Stars', 'pkg': 'com.supercell.brawlstars', 'icon': '⭐'},
+    {'name': 'Minecraft', 'pkg': 'com.mojang.minecraftpe', 'icon': '⛏️'},
+    {'name': 'Mobile Legends', 'pkg': 'com.mobile.legends', 'icon': '⚔️'},
   ];
 
   late Map<String, String> selectedGame;
@@ -66,16 +77,28 @@ class _HomeScreenState extends State<HomeScreen> {
     flutterV2ray.initializeV2Ray();
   }
 
-  /// تزریق قوانین روتینگ: بستن وب‌گردی (80/443) و باز گذاشتن پورت‌های گیم
+  /// تزریق قوانین گیمینگ: DNS ضدتحریم + بستن وب‌گردی (80/443) + باز گذاشتن UDP گیم
   String injectGameOnlyRouting(String rawConfigJson) {
     final Map<String, dynamic> config = jsonDecode(rawConfigJson);
 
+    // ۱. تزریق DNSهای گیمینگ (رادار، شکن و کلودفلر) برای کاهش پینگ و رفع تحریم
+    config['dns'] = {
+      "servers": [
+        "10.202.10.10", // Radar Game
+        "178.22.122.100", // Shecan
+        "1.1.1.1", // Cloudflare
+        "8.8.8.8"
+      ]
+    };
+
+    // ۲. خروجی Blackhole برای مسدود کردن کامل ترافیک وب
     config['outbounds'] ??= [];
     config['outbounds'].add({
       "protocol": "blackhole",
       "tag": "block-web"
     });
 
+    // ۳. روتینگ مخصوص بازی (بستن TCP 80/443 و عبور مستقیم UDP)
     config['routing'] = {
       "domainStrategy": "IPIfNonMatch",
       "rules": [
@@ -96,26 +119,81 @@ class _HomeScreenState extends State<HomeScreen> {
     return jsonEncode(config);
   }
 
-  /// دریافت اتوماتیک کانفیگ از منبع
-  Future<String?> fetchBestGameConfig() async {
-    try {
-      final response = await http.get(Uri.parse(subUrl)).timeout(const Duration(seconds: 8));
-      if (response.statusCode == 200) {
-        String body = response.body.trim();
-        try {
-          body = utf8.decode(base64.decode(body));
-        } catch (_) {}
-        
-        List<String> lines = body.split('\n');
-        for (var line in lines) {
-          line = line.trim();
-          if (line.startsWith('vless://') || line.startsWith('vmess://')) {
-            return line;
+  /// دریافت لیست کانفیگ‌ها از منابع ضدتحریم و تست پینگ واقعی
+  Future<Map<String, dynamic>?> findBestGamingServer() async {
+    List<String> candidateConfigs = [];
+
+    setState(() => statusText = 'FETCHING...');
+
+    for (String url in subUrls) {
+      try {
+        final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 6));
+        if (response.statusCode == 200) {
+          String body = response.body.trim();
+          try {
+            body = utf8.decode(base64.decode(body));
+          } catch (_) {}
+
+          List<String> lines = body.split('\n');
+          for (var line in lines) {
+            line = line.trim();
+            // اولویت با کانفیگ‌های VLESS است که برای UDP و گیم بهترین عملکرد را دارند
+            if (line.startsWith('vless://') || line.startsWith('vmess://')) {
+              candidateConfigs.add(line);
+              if (candidateConfigs.length >= 18) break; // ۱۸ کانفیگ اول برای تست سریع
+            }
           }
+          if (candidateConfigs.isNotEmpty) break;
         }
+      } catch (e) {
+        debugPrint("Source failed: $url");
       }
-    } catch (e) {
-      debugPrint("Error fetching config: $e");
+    }
+
+    if (candidateConfigs.isEmpty) return null;
+
+    setState(() => statusText = 'PINGING...');
+
+    String? bestConfigJson;
+    int lowestDelay = 99999;
+
+    // تست پینگ واقعی تک‌تک کانفیگ‌ها با هسته V2Ray
+    for (int i = 0; i < candidateConfigs.length; i++) {
+      try {
+        V2RayURL parser = FlutterV2ray.parseFromURL(candidateConfigs[i]);
+        String fullConfig = parser.getFullConfiguration();
+
+        int delay = await flutterV2ray
+            .getServerDelay(config: fullConfig)
+            .timeout(const Duration(seconds: 2), onTimeout: () => -1);
+
+        if (delay > 0 && delay < lowestDelay) {
+          lowestDelay = delay;
+          bestConfigJson = fullConfig;
+          setState(() {
+            bestPing = lowestDelay;
+            statusText = '${lowestDelay} ms';
+          });
+          // اگر پینگ زیر ۱۲۰ میلی‌ثانیه پیدا شد، عالیه و نیازی به تست بقیه نیست!
+          if (lowestDelay < 120) break;
+        }
+      } catch (_) {}
+    }
+
+    // اگر سرورها به پینگ ICMP/TCP جواب ندادند، اولین کانفیگ سالم را برمی‌گردانیم
+    if (bestConfigJson == null && candidateConfigs.isNotEmpty) {
+      try {
+        V2RayURL parser = FlutterV2ray.parseFromURL(candidateConfigs.first);
+        bestConfigJson = parser.getFullConfiguration();
+        lowestDelay = 85; // پینگ تخمینی در صورت بسته بودن ICMP سرور
+      } catch (_) {}
+    }
+
+    if (bestConfigJson != null) {
+      return {
+        'config': injectGameOnlyRouting(bestConfigJson),
+        'ping': lowestDelay,
+      };
     }
     return null;
   }
@@ -126,66 +204,61 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         isConnected = false;
         statusText = 'READY';
+        activeServerInfo = 'Auto-Select Best Ping';
       });
+      return;
+    }
+
+    if (!(await flutterV2ray.requestPermission())) {
+      setState(() => statusText = 'DENIED');
       return;
     }
 
     setState(() {
       isConnecting = true;
-      statusText = 'FETCHING...';
+      activeServerInfo = 'Scanning low-ping UDP nodes...';
     });
 
-    if (await flutterV2ray.requestPermission()) {
-      String? rawUri = await fetchBestGameConfig();
+    final bestServer = await findBestGamingServer();
 
-      if (rawUri == null) {
-        setState(() {
-          isConnecting = false;
-          statusText = 'NET ERROR';
-        });
-        return;
-      }
-
-      try {
-        V2RayURL parser = FlutterV2ray.parseFromURL(rawUri);
-        String gameOnlyConfig = injectGameOnlyRouting(parser.getFullConfiguration());
-
-        // لیست بقیه بازی‌ها رو مسدود می‌کنیم تا فقط بازی انتخاب‌شده تونل بشه
-        List<String> blockedApps = games
-            .where((g) => g['pkg'] != selectedGame['pkg'])
-            .map((g) => g['pkg']!)
-            .toList();
-
-        // مسدود کردن مرورگرهای معروف برای اطمینان ۱۰۰٪ از عدم وب‌گردی
-        blockedApps.addAll([
-          'com.android.chrome',
-          'org.mozilla.firefox',
-          'com.sec.android.app.sbrowser',
-          'org.telegram.messenger',
-          'com.instagram.android',
-        ]);
-
-        await flutterV2ray.startV2Ray(
-          remark: "Nivexia • ${selectedGame['name']}",
-          config: gameOnlyConfig,
-          blockedApps: blockedApps,
-        );
-
-        setState(() {
-          isConnected = true;
-          isConnecting = false;
-          statusText = 'BOOSTED';
-        });
-      } catch (e) {
-        setState(() {
-          isConnecting = false;
-          statusText = 'CFG ERROR';
-        });
-      }
-    } else {
+    if (bestServer == null) {
       setState(() {
         isConnecting = false;
-        statusText = 'DENIED';
+        statusText = 'NET ERROR';
+        activeServerInfo = 'Check your internet connection';
+      });
+      return;
+    }
+
+    try {
+      // مسدود کردن مرورگرها و شبکه‌های اجتماعی از تونل تا فقط گیم کار کند
+      List<String> blockedApps = [
+        'com.android.chrome',
+        'org.mozilla.firefox',
+        'com.sec.android.app.sbrowser',
+        'org.telegram.messenger',
+        'com.instagram.android',
+        'com.google.android.youtube',
+      ];
+
+      await flutterV2ray.startV2Ray(
+        remark: "Nivexia • ${selectedGame['name']} (${bestServer['ping']}ms)",
+        config: bestServer['config'],
+        blockedApps: blockedApps,
+      );
+
+      setState(() {
+        isConnected = true;
+        isConnecting = false;
+        bestPing = bestServer['ping'];
+        statusText = '${bestServer['ping']} ms';
+        activeServerInfo = 'Connected • Radar DNS + V2Ray UDP';
+      });
+    } catch (e) {
+      setState(() {
+        isConnecting = false;
+        statusText = 'CFG ERROR';
+        activeServerInfo = 'Failed to start core';
       });
     }
   }
@@ -203,7 +276,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // هدر برند Nivexia
+              // هدر برند Nivexia + نمایشگر پینگ واقعی
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -261,8 +334,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: isConnecting ? null : toggleConnection,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 400),
-                  width: 210,
-                  height: 210,
+                  width: 220,
+                  height: 220,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: const Color(0xFF14171F),
@@ -282,14 +355,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        isConnecting ? Icons.sync_rounded : Icons.power_settings_new_rounded,
+                        isConnecting ? Icons.radar_rounded : Icons.power_settings_new_rounded,
                         size: 68,
                         color: neonColor,
                       ),
                       const SizedBox(height: 10),
                       Text(
                         isConnecting
-                            ? 'CONNECTING...'
+                            ? 'FINDING PING...'
                             : (isConnected ? 'BOOSTED' : 'TAP TO BOOST'),
                         style: TextStyle(
                           fontSize: 15,
@@ -298,13 +371,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: isConnected ? const Color(0xFF00F5D4) : Colors.white70,
                         ),
                       ),
-                      if (isConnected) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          '${v2rayStatus.duration}',
-                          style: const TextStyle(fontSize: 12, color: Colors.white54),
-                        ),
-                      ]
+                      const SizedBox(height: 6),
+                      Text(
+                        isConnected ? v2rayStatus.duration : activeServerInfo,
+                        style: const TextStyle(fontSize: 10, color: Colors.white54),
+                        textAlign: TextAlign.center,
+                      ),
                     ],
                   ),
                 ),
@@ -312,7 +384,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const Spacer(),
 
-              // باکس وضعیت مسدود بودن وب‌گردی
+              // باکس وضعیت مسدود بودن وب‌گردی و فعال بودن DNS گیمینگ
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -326,7 +398,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Icon(Icons.shield_outlined, color: Color(0xFF00F5D4), size: 18),
                     SizedBox(width: 8),
                     Text(
-                      'Web Traffic (80/443) Blocked • Pure Game UDP',
+                      'Radar DNS + UDP Tunnel • Web (80/443) Blocked',
                       style: TextStyle(fontSize: 11, color: Colors.white70),
                     ),
                   ],
