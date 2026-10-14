@@ -31,13 +31,14 @@ jobs:
           mv main.dart.bak lib/main.dart
           mv pubspec.yaml.bak pubspec.yaml
 
-      - name: Configure Android Manifest & Native V2Ray Packaging
+      - name: Configure Android Manifest & Native Xray Core
         run: |
+          echo "android.bundle.enableUncompressedNativeLibs=false" >> android/gradle.properties
           sed -i 's/minSdkVersion .*/minSdkVersion 21/g' android/app/build.gradle || true
           sed -i 's/minSdk = .*/minSdk = 21/g' android/app/build.gradle || true
           sed -i 's/minSdk = .*/minSdk = 21/g' android/app/build.gradle.kts || true
           sed -i 's/android:label="nivexia_ping"/android:label="Nivexia" android:extractNativeLibs="true" android:usesCleartextTraffic="true"/g' android/app/src/main/AndroidManifest.xml
-          sed -i '/<application/i <uses-permission android:name="android.permission.INTERNET"/>\n<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/i <uses-permission android:name="android.permission.INTERNET"/>\n<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED"/>\n<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>\n<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' android/app/src/main/AndroidManifest.xml
           if [ -f android/app/build.gradle ]; then
             printf "\nandroid {\n    packagingOptions {\n        jniLibs {\n            useLegacyPackaging = true\n        }\n    }\n}\n" >> android/app/build.gradle
           fi
