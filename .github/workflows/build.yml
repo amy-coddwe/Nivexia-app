@@ -23,15 +23,20 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Generate Android Platform Files
+      - name: Backup Custom Code & Generate Android Files
         run: |
+          cp lib/main.dart main.dart.bak
+          cp pubspec.yaml pubspec.yaml.bak
           flutter create --platforms=android --org com.nivexia --project-name nivexia_ping .
+          mv main.dart.bak lib/main.dart
+          mv pubspec.yaml.bak pubspec.yaml
 
-      - name: Configure Android Manifest & Gradle for V2Ray
+      - name: Inject Internet Permission & V2Ray Configs
         run: |
           sed -i 's/minSdkVersion .*/minSdkVersion 21/g' android/app/build.gradle || true
           sed -i 's/minSdk = .*/minSdk = 21/g' android/app/build.gradle || true
           sed -i 's/android:label="nivexia_ping"/android:label="Nivexia Ping"/g' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/i <uses-permission android:name="android.permission.INTERNET"/>\n<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' android/app/src/main/AndroidManifest.xml
 
       - name: Install Dependencies
         run: flutter pub get
