@@ -86,14 +86,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   bool isScanningServers = false;
 
   // تنظیمات اصلی برنامه
-  bool isPersian = false; // زبان پیش‌فرض انگلیسی استاندارد (قابل تغییر در تنظیمات)
+  bool isPersian = false;
   bool isDnsMode = false; // false = VPN Mode | true = DNS Mode
 
-  // تنظیمات پیش‌فرض گیمینگ (همگی روشن به صورت پیش‌فرض برای بهترین پینگ)
-  bool gameOnlyLock = true; // بستن ترافیک سنگین وب و شبکه‌های اجتماعی
-  bool tcpNoDelay = true; // حذف تاخیر پکت‌ها در بازی‌های آنلاین
-  bool bypassIran = true; // عبور مستقیم آی‌پی‌های داخل ایران
-  bool antiPacketLossMux = true; // تثبیت پکت‌ها در درگیری‌های شلوغ
+  // تنظیمات پیش‌فرض گیمینگ
+  bool gameOnlyLock = true;
+  bool tcpNoDelay = true;
+  bool bypassIran = true;
 
   // تنظیمات DNS
   String selectedDnsKey = 'Radar Game';
@@ -109,7 +108,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     'Custom DNS': [],
   };
 
-  // منابع دریافت خودکار سرورها در پس‌زمینه
   final List<String> _sources = [
     'https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/top100.txt',
     'https://cdn.jsdelivr.net/gh/ebrasha/free-v2ray-public-list@main/vless_configs.txt',
@@ -137,7 +135,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Future<void> _initEngine() async {
     await flutterV2ray.initializeV2Ray();
-    // بارگذاری و تست پینگ سرورها در پس‌زمینه به محض باز شدن برنامه
     _fetchAndPingServers();
   }
 
@@ -163,7 +160,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return dnsPresets[selectedDnsKey] ?? ['10.202.10.10', '1.1.1.1'];
   }
 
-  /// استخراج تمیز پرچم و نام کشور (حذف آیدی کانال‌های تلگرام و تبلیغات)
+  /// استخراج تمیز پرچم و نام کشور بدون تبلیغات
   Map<String, String> _parseCleanLocation(String rawRemark, int index) {
     String upper = rawRemark.toUpperCase();
     String flag = '🇪🇺';
@@ -207,14 +204,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     };
   }
 
-  /// دریافت موازی سرورها و تست پینگ سریع
+  /// دریافت موازی سرورها و تست پینگ واقعی
   Future<void> _fetchAndPingServers() async {
     if (isScanningServers) return;
     setState(() => isScanningServers = true);
 
     List<String> rawLinks = [];
 
-    // درخواست همزمان به منابع برای سرعت بالا
     await Future.wait(_sources.map((url) async {
       try {
         final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 4));
@@ -263,7 +259,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         selectedServer ??= servers.first;
       });
 
-      // تست پینگ موازی دسته‌ای
       await Future.wait(servers.map((node) async {
         try {
           int delay = await flutterV2ray
@@ -277,7 +272,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
       if (mounted) {
         setState(() {
-          // مرتب‌سازی: سرورهای دارای پینگ سالم اول، از کمترین پینگ به بیشترین
           servers.sort((a, b) {
             if (a.ping > 0 && b.ping > 0) return a.ping.compareTo(b.ping);
             if (a.ping > 0) return -1;
@@ -295,11 +289,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  /// ساخت کانفیگ استاندارد و بدون خطا برای حالت DNS یا حالت VPN
+  /// ساخت کانفیگ استاندارد برای حالت DNS یا حالت VPN
   String _buildEngineConfig({ServerNode? vpnNode}) {
     final List<String> dnsPair = _getActiveDnsPair();
 
-    // ۱. اگر روی حالت DNS باشیم: ساخت تونل لوکال فوری بدون نیاز به سرور خارجی
+    // ۱. حالت DNS: اتصال مستقیم و فوری بدون سرور خارجی
     if (isDnsMode || vpnNode == null) {
       V2RayURL template = FlutterV2ray.parseFromURL(
         'vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443?security=none&type=tcp#NivexiaDNS',
@@ -308,74 +302,41 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
       cfg['dns'] = {
         "servers": dnsPair,
-        "queryStrategy": "UseIPv4",
       };
 
-      cfg['outbounds'] = [
-        {
-          "tag": "proxy",
+      if (cfg['outbounds'] != null && (cfg['outbounds'] as List).isNotEmpty) {
+        String primaryTag = cfg['outbounds'][0]['tag'] ?? 'proxy';
+        cfg['outbounds'][0] = {
+          "tag": primaryTag,
           "protocol": "freedom",
-          "settings": {"domainStrategy": "UseIPv4"},
-          "streamSettings": {
-            "sockopt": {"tcpNoDelay": tcpNoDelay}
+          "settings": {
+            "domainStrategy": "UseIP"
           }
-        },
-        {
-          "tag": "dns-out",
-          "protocol": "dns"
-        }
-      ];
-
-      cfg['routing'] = {
-        "domainStrategy": "UseIPv4",
-        "rules": [
-          {
-            "type": "field",
-            "port": "53",
-            "outboundTag": "dns-out"
-          }
-        ]
-      };
+        };
+      }
 
       return jsonEncode(cfg);
     }
 
-    // ۲. اگر روی حالت VPN باشیم: تزریق ایمن تنظیمات گیمینگ به کانفیگ سرور انتخابی
+    // ۲. حالت VPN: تزریق استاندارد DNS و TCP NoDelay بدون دستکاری تگ‌های هسته
     Map<String, dynamic> cfg = jsonDecode(vpnNode.fullConfig);
 
     cfg['dns'] = {
       "servers": dnsPair,
-      "queryStrategy": "UseIPv4",
     };
 
-    if (cfg['outbounds'] != null && (cfg['outbounds'] as List).isNotEmpty) {
-      cfg['outbounds'][0]['tag'] = 'proxy';
-
-      if (antiPacketLossMux) {
-        cfg['outbounds'][0]['mux'] = {"enabled": true, "concurrency": 8};
-      }
-
-      if (tcpNoDelay) {
-        cfg['outbounds'][0]['streamSettings'] ??= {};
+    if (tcpNoDelay && cfg['outbounds'] != null && (cfg['outbounds'] as List).isNotEmpty) {
+      if (cfg['outbounds'][0]['streamSettings'] is Map) {
         cfg['outbounds'][0]['streamSettings']['sockopt'] = {
           "tcpNoDelay": true,
-          "tcpKeepAliveIdle": 30,
         };
       }
-    }
-
-    if (bypassIran) {
-      cfg['outbounds'].add({
-        "tag": "direct",
-        "protocol": "freedom",
-        "settings": {}
-      });
     }
 
     return jsonEncode(cfg);
   }
 
-  /// اتصال یا قطع اتصال فوری
+  /// اتصال یا قطع اتصال
   Future<void> _toggleConnection() async {
     if (isConnected) {
       await flutterV2ray.stopV2Ray();
@@ -392,12 +353,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     setState(() => isConnecting = true);
 
     try {
-      // اگر حالت VPN است و هنوز لیست سرور خالیست، یک بار سریع تلاش کن
       if (!isDnsMode && selectedServer == null) {
         await _fetchAndPingServers();
       }
 
-      // لیست برنامه‌های مسدود شده در حالت Game-Only
       List<String>? blockedApps;
       if (gameOnlyLock) {
         blockedApps = [
@@ -431,7 +390,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: Colors.redAccent.shade700,
-            content: Text(tr('Connection failed. Switching to next node...', 'خطا در اتصال به این سرور؛ سرور دیگری انتخاب کنید.')),
+            content: Text(tr('Connection failed. Try another server or DNS Mode.', 'خطا در اتصال؛ سرور دیگری انتخاب کنید یا حالت DNS را بزنید.')),
           ),
         );
       }
@@ -447,7 +406,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return '${(val / 1048576).toStringAsFixed(1)} MB/s';
   }
 
-  /// پنجره انتخاب سرورها (با پرچم، پینگ واقعی و سوییچ آنی)
+  /// لیست سرورها با پرچم، پینگ و سوییچ آنی
   void _openServerSelectorSheet() {
     showModalBottomSheet(
       context: context,
@@ -639,7 +598,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  /// دیالوگ افزودن کانفیگ شخصی توسط کاربر
   void _showAddCustomConfigDialog(StateSetter setSheetState) {
     final TextEditingController uriController = TextEditingController();
     showDialog(
@@ -695,7 +653,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  /// پنجره تنظیمات پیشرفته (VPN vs DNS + Custom DNS 1 & 2 + زبان + بهینه‌ساز گیم)
+  /// پنجره تنظیمات (VPN / DNS + Custom DNS 1 & 2 + زبان)
   void _openSettingsSheet() {
     showModalBottomSheet(
       context: context,
@@ -771,9 +729,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       ),
                       const SizedBox(height: 18),
 
-                      // ۲. انتخابگر DNS + بخش Custom DNS (دی‌ان‌اس اول و دوم)
+                      // ۲. انتخابگر DNS + بخش Custom DNS
                       Text(
-                        tr('Gaming DNS Server', 'سرور دی‌ان‌اس (پیشنهادی یا شخصی)'),
+                        tr('Gaming DNS Server', 'سرور دی‌ان‌اس (پیشنهادی یا دستی)'),
                         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70),
                       ),
                       const SizedBox(height: 8),
@@ -794,7 +752,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                               return DropdownMenuItem<String>(
                                 value: key,
                                 child: Text(
-                                  ips.isEmpty ? '⚙️ $key (${tr("Enter Manually", "ورود دستی")})' : '$key  •  ${ips.first}',
+                                  ips.isEmpty ? '⚙️ $key (${tr("Manual Input", "ورود دستی")})' : '$key  •  ${ips.first}',
                                   style: const TextStyle(fontSize: 13),
                                 ),
                               );
@@ -809,7 +767,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         ),
                       ),
 
-                      // فیلدهای ورود دستی DNS اول و دوم در صورت انتخاب Custom DNS
                       if (selectedDnsKey == 'Custom DNS') ...[
                         const SizedBox(height: 12),
                         Row(
@@ -881,21 +838,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         },
                       ),
 
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        activeColor: const Color(0xFF00F5D4),
-                        title: Text(tr('Anti Packet-Loss (Mux)', 'جلوگیری از پکت‌لاس در فایت‌ها (Mux)')),
-                        subtitle: Text(
-                          tr('Stabilizes UDP/TCP streams under heavy load', 'حفظ پایداری پینگ در صحنه‌های شلوغ بازی'),
-                          style: const TextStyle(fontSize: 11, color: Colors.white54),
-                        ),
-                        value: antiPacketLossMux,
-                        onChanged: (v) {
-                          setModalState(() => antiPacketLossMux = v);
-                          setState(() => antiPacketLossMux = v);
-                        },
-                      ),
-
                       const Divider(color: Colors.white12),
 
                       // ۴. زبان برنامه
@@ -942,7 +884,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             padding: const EdgeInsets.symmetric(horizontal: 22.0, vertical: 16.0),
             child: Column(
               children: [
-                // ۱. هدر رسمی و تمیز Nivexia
+                // ۱. هدر رسمی Nivexia
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -970,7 +912,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     ),
                     Row(
                       children: [
-                        // دکمه سوییچ سریع بین VPN و DNS در بالای صفحه
                         GestureDetector(
                           onTap: () => setState(() => isDnsMode = !isDnsMode),
                           child: Container(
@@ -1019,7 +960,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
                 const Spacer(),
 
-                // ۲. دکمه پاور مرکزی با انیمیشن تنفس نوری (Pulse Glow)
+                // ۲. دکمه پاور مرکزی با انیمیشن تنفس نوری
                 GestureDetector(
                   onTap: isConnecting ? null : _toggleConnection,
                   child: AnimatedBuilder(
@@ -1051,7 +992,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           children: [
                             Icon(
                               isConnecting
-                                  ? Icons.Autorenew_rounded
+                                  ? Icons.autorenew_rounded
                                   : Icons.power_settings_new_rounded,
                               size: 66,
                               color: primaryNeon,
@@ -1090,7 +1031,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
                 const Spacer(),
 
-                // ۳. پنل مانیتورینگ زنده سرعت و پینگ (Telemetry Bar)
+                // ۳. پنل مانیتورینگ زنده سرعت دانلود و آپلود
                 Row(
                   children: [
                     Expanded(
@@ -1159,7 +1100,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
                 const SizedBox(height: 14),
 
-                // ۴. دکمه بزرگ انتخاب سرورها / DNS در پایین صفحه
+                // ۴. دکمه انتخاب سرورها / DNS در پایین صفحه
                 GestureDetector(
                   onTap: isDnsMode ? _openSettingsSheet : _openServerSelectorSheet,
                   child: Container(
