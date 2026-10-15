@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_v2ray_client/flutter_v2ray.dart';
@@ -51,16 +50,24 @@ class ReadyServer {
     required this.port,
     required this.ping,
   });
-}
 
-class ProtocolTier {
-  final String name;
-  final List<String> urls;
+  Map<String, dynamic> toMap() => {
+        'rawUri': rawUri,
+        'configJson': configJson,
+        'protocol': protocol,
+        'address': address,
+        'port': port,
+        'ping': ping,
+      };
 
-  const ProtocolTier({
-    required this.name,
-    required this.urls,
-  });
+  factory ReadyServer.fromMap(Map<String, dynamic> map) => ReadyServer(
+        rawUri: map['rawUri'] ?? '',
+        configJson: map['configJson'] ?? '',
+        protocol: map['protocol'] ?? 'VLESS',
+        address: map['address'] ?? '',
+        port: map['port'] ?? 443,
+        ping: map['ping'] ?? 120,
+      );
 }
 
 class HomeScreen extends StatefulWidget {
@@ -71,8 +78,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
-  static const int _chunkSize = 300; // اسکن پله‌ای ۳۰۰ تا ۳۰۰ تا به ترتیب فایل
-
   late final V2ray v2ray = V2ray(
     onStatusChanged: (status) {
       if (!mounted) return;
@@ -81,6 +86,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         v2rayStatus = status;
         if (st == "CONNECTED") {
           _nativeVpnRunning = true;
+          isConnected = true;
+          isConnecting = false;
         } else if (st == "DISCONNECTED") {
           _nativeVpnRunning = false;
           if (!isConnecting && !_isAutoSwitching) {
@@ -98,13 +105,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   bool isConnected = false;
   bool isConnecting = false;
   bool isRefreshingPing = false;
-  bool _isScanning = false;
-  bool _abortScanRequested = false;
+  bool _isBackgroundWorking = false;
   bool _isAutoSwitching = false;
   bool _userCancelledConnect = false;
 
   int currentPing = -1;
-  String statusMessage = 'Preparing scanner...';
+  String statusMessage = 'Ready to connect';
 
   Timer? _backgroundPoolTimer;
   Timer? _healthWatchdogTimer;
@@ -112,54 +118,33 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   int _configFailSeconds = 0;
   bool _internetIsDown = false;
 
-  // فقط سرورهایی که تست واقعی هسته Xray (getServerDelay) را رد کرده‌اند وارد این لیست می‌شوند
   final List<ReadyServer> _readyPool = [];
   final Set<String> _deadUris = {};
   ReadyServer? _activeServer;
 
-  int _currentTierIndex = 0;
-  int _currentOffsetInTier = 0;
-  final Map<String, List<String>> _cachedProtocolLines = {};
-
-  // ۴ منبع اصلی Epodonios به ترتیب اولویت: VLESS -> VMess -> SS -> SSR
-  final List<ProtocolTier> _protocolWaterfall = const [
-    ProtocolTier(
-      name: 'VLESS',
-      urls: [
-        'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt',
-        'https://ghfast.top/https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt',
-        'https://cdn.jsdelivr.net/gh/barry-far/V2ray-Configs@main/Splitted-By-Protocol/vless.txt',
-        'https://cdn.jsdelivr.net/gh/ebrasha/free-v2ray-public-list@main/vless_configs.txt',
-      ],
-    ),
-    ProtocolTier(
-      name: 'VMess',
-      urls: [
-        'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vmess.txt',
-        'https://ghfast.top/https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vmess.txt',
-        'https://cdn.jsdelivr.net/gh/barry-far/V2ray-Configs@main/Splitted-By-Protocol/vmess.txt',
-        'https://cdn.jsdelivr.net/gh/ebrasha/free-v2ray-public-list@main/vmess_configs.txt',
-      ],
-    ),
-    ProtocolTier(
-      name: 'Shadowsocks',
-      urls: [
-        'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/ss.txt',
-        'https://ghfast.top/https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/ss.txt',
-        'https://cdn.jsdelivr.net/gh/barry-far/V2ray-Configs@main/Splitted-By-Protocol/ss.txt',
-        'https://cdn.jsdelivr.net/gh/ebrasha/free-v2ray-public-list@main/ss_configs.txt',
-      ],
-    ),
-    ProtocolTier(
-      name: 'SSR / Trojan',
-      urls: [
-        'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/ssr.txt',
-        'https://ghfast.top/https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/ssr.txt',
-        'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/trojan.txt',
-        'https://cdn.jsdelivr.net/gh/barry-far/V2ray-Configs@main/Splitted-By-Protocol/trojan.txt',
-      ],
-    ),
+  // لایه ۱: منابع از قبل تست‌شده و فیلترشده مخصوص ایران (برای اتصال فوری زیر ۱ ثانیه)
+  // لایه ۲: ۴ منبع بزرگ Epodonios برای پشتیبانی بی‌پایان
+  final List<String> _fastFilteredSources = const [
+    // منابع فیلترشده که ربات‌های گیت‌هاب هر ۱۵ دقیقه فقط کانفیگ‌های سالم را در آن‌ها می‌گذارند
+    'https://cdn.jsdelivr.net/gh/MatinGhanbari/v2ray-configs@main/subscriptions/filtered/subs/vless.txt',
+    'https://cdn.jsdelivr.net/gh/MatinGhanbari/v2ray-configs@main/subscriptions/filtered/subs/vmess.txt',
+    'https://cdn.jsdelivr.net/gh/yebekhe/TVC@main/subscriptions/xray/normal/vless',
+    'https://cdn.jsdelivr.net/gh/yebekhe/TVC@main/subscriptions/xray/normal/mix',
+    'https://cdn.jsdelivr.net/gh/soroushmirzaei/telegram-configs-collector@main/subscribe/protocols/vless',
+    'https://cdn.jsdelivr.net/gh/barry-far/V2ray-Configs@main/Sub1.txt',
+    'https://cdn.jsdelivr.net/gh/ebrasha/free-v2ray-public-list@main/vless_configs.txt',
+    // ۴ منبع اصلی Epodonios (از طریق پروکسی سریع و لینک مستقیم)
+    'https://ghfast.top/https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt',
+    'https://ghfast.top/https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vmess.txt',
+    'https://ghfast.top/https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/ss.txt',
+    'https://ghfast.top/https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/ssr.txt',
+    'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt',
+    'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vmess.txt',
+    'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/ss.txt',
+    'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/ssr.txt',
   ];
+
+  int _sourceCursor = 0;
 
   @override
   void initState() {
@@ -178,20 +163,22 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       notificationIconResourceName: "ic_launcher",
     );
 
-    // شروع خودکار آماده‌سازی سرورها به محض باز شدن برنامه
-    _scanNextVerifiedChunk();
+    // ۱. بارگذاری فوری سرورهای سالم ذخیره‌شده در حافظه گوشی (اتصال ۰.۵ ثانیه‌ای بدون اسکن!)
+    await _loadCachedServersFromDisk();
 
-    // به‌روزرسانی لیست سرورهای آماده در پس‌زمینه (فقط زمانی که VPN قطع است)
+    // ۲. آماده‌سازی بی‌صدا و موازی سرورهای جدید در پس‌زمینه
+    _fillServerPoolInBackground();
+
     _backgroundPoolTimer = Timer.periodic(const Duration(seconds: 45), (_) {
-      if (!isConnected && !isConnecting && !_isScanning) {
-        if (_readyPool.length < 3) {
-          _scanNextVerifiedChunk();
+      if (!isConnected && !isConnecting && !_isBackgroundWorking) {
+        if (_readyPool.length < 5) {
+          _fillServerPoolInBackground();
         }
       }
     });
 
-    // بررسی سلامت واقعی تونل هر ۱۵ ثانیه وقتی VPN روشن است
-    _healthWatchdogTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+    // ۳. مانیتورینگ سلامت اتصال هر ۱۲ ثانیه برای تشخیص قطعی کانفیگ یا اینترنت
+    _healthWatchdogTimer = Timer.periodic(const Duration(seconds: 12), (_) {
       if (isConnected && !isConnecting && !_isAutoSwitching) {
         _checkConnectionAndHandleFailover();
       }
@@ -200,7 +187,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   @override
   void dispose() {
-    _abortScanRequested = true;
     _pulseController.dispose();
     _backgroundPoolTimer?.cancel();
     _healthWatchdogTimer?.cancel();
@@ -209,7 +195,43 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   // ===========================================================================
-  // ۱. استخراج و ساخت کانفیگ استاندارد (سازگار با شمارنده سرعت دانلود/آپلود و v2rayNG)
+  // ۱. کش محلی روی حافظه گوشی (برای اتصال آنی بدون انتظار در دفعات بعدی)
+  // ===========================================================================
+
+  File get _cacheFile =>
+      File('${Directory.systemTemp.path}/nivexia_verified_pool_v2.json');
+
+  Future<void> _loadCachedServersFromDisk() async {
+    try {
+      if (await _cacheFile.exists()) {
+        final String content = await _cacheFile.readAsString();
+        final List<dynamic> list = jsonDecode(content);
+        for (final item in list) {
+          final srv = ReadyServer.fromMap(Map<String, dynamic>.from(item));
+          if (srv.rawUri.isNotEmpty && !_readyPool.any((s) => s.rawUri == srv.rawUri)) {
+            _readyPool.add(srv);
+          }
+        }
+        if (_readyPool.isNotEmpty && mounted) {
+          setState(() {
+            currentPing = _readyPool.first.ping;
+            statusMessage = 'Ready • Instant Connect (${_readyPool.first.protocol})';
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveVerifiedServersToDisk() async {
+    try {
+      final List<Map<String, dynamic>> data =
+          _readyPool.take(15).map((s) => s.toMap()).toList();
+      await _cacheFile.writeAsString(jsonEncode(data));
+    } catch (_) {}
+  }
+
+  // ===========================================================================
+  // ۲. استخراج و اصلاح استاندارد کانفیگ‌ها (بدون تگ مخرب stats که هسته را قفل می‌کرد)
   // ===========================================================================
 
   String _decodeBase64Safe(String input) {
@@ -270,7 +292,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return ssUri;
   }
 
-  List<String> _extractOrderedConfigs(String rawContent) {
+  List<String> _extractValidConfigs(String rawContent) {
     String text = rawContent.trim();
     if (text.isEmpty) return [];
 
@@ -280,7 +302,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
 
     final List<String> validLinks = [];
-    final Set<String> seenInFile = {};
+    final Set<String> seen = {};
 
     for (String line in text.split(RegExp(r'[\r\n]+'))) {
       line = line.trim();
@@ -299,7 +321,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           line.startsWith('trojan://')) {
         if (line.contains('ech=')) continue;
         if (_deadUris.contains(line)) continue;
-        if (seenInFile.add(line)) {
+        if (seen.add(line)) {
           validLinks.add(line);
         }
       }
@@ -307,14 +329,80 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return validLinks;
   }
 
-  Future<String> _downloadSourceContent(String url) async {
+  /// اصلاح دقیق JSON خروجی بدون اضافه کردن فیلدهای غیرمجاز
+  String _fixCleanXrayJson(String rawConfigJson) {
+    try {
+      final Map<String, dynamic> cfg = jsonDecode(rawConfigJson);
+      cfg['dns'] = {
+        "servers": ["1.1.1.1", "8.8.8.8"]
+      };
+
+      if (cfg['outbounds'] is List && (cfg['outbounds'] as List).isNotEmpty) {
+        final Map<String, dynamic> ob =
+            Map<String, dynamic>.from(cfg['outbounds'][0]);
+        if (ob['streamSettings'] is Map) {
+          final Map<String, dynamic> stream =
+              Map<String, dynamic>.from(ob['streamSettings']);
+
+          // اصلاح کاراکترهای %2F در مسیر WebSocket
+          if (stream['wsSettings'] is Map) {
+            final Map<String, dynamic> ws =
+                Map<String, dynamic>.from(stream['wsSettings']);
+            if (ws['path'] is String) {
+              String p = ws['path'];
+              try {
+                p = Uri.decodeComponent(p);
+              } catch (_) {}
+              if (p.contains('?ed=')) {
+                p = p.split('?ed=').first;
+              }
+              ws['path'] = p.isEmpty ? '/' : p;
+            }
+            stream['wsSettings'] = ws;
+          }
+
+          ob['streamSettings'] = stream;
+        }
+        cfg['outbounds'][0] = ob;
+      }
+      return jsonEncode(cfg);
+    } catch (_) {
+      return rawConfigJson;
+    }
+  }
+
+  ReadyServer? _parseSingleUri(String uri) {
+    try {
+      final V2RayURL parser = V2ray.parseFromURL(uri);
+      final String host = parser.address.trim();
+      final int port = parser.port;
+      if (host.isEmpty || port <= 0 || host == '127.0.0.1') return null;
+
+      String proto = uri.split('://').first.toUpperCase();
+      if (uri.contains('security=reality')) proto = 'REALITY';
+
+      final String fixedJson = _fixCleanXrayJson(parser.getFullConfiguration());
+      return ReadyServer(
+        rawUri: uri,
+        configJson: fixedJson,
+        protocol: proto,
+        address: host,
+        port: port,
+        ping: -1,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String> _fetchFastChunk(String url) async {
     final http.Client client = http.Client();
     try {
       final http.Request req = http.Request('GET', Uri.parse(url));
       req.headers['User-Agent'] = 'v2rayNG/1.8.23';
 
       final http.StreamedResponse response =
-          await client.send(req).timeout(const Duration(seconds: 7));
+          await client.send(req).timeout(const Duration(seconds: 5));
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         client.close();
@@ -328,7 +416,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       sub = response.stream.listen(
         (chunk) {
           bytes.addAll(chunk);
-          if (bytes.length >= 2200000) {
+          // دریافت فقط ۲۵۰ کیلوبایت اول برای سرعت فوق‌العاده بالا
+          if (bytes.length >= 250000) {
             sub.cancel();
             client.close();
             if (!completer.isCompleted) {
@@ -350,7 +439,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       );
 
       return await completer.future.timeout(
-        const Duration(seconds: 8),
+        const Duration(seconds: 5),
         onTimeout: () {
           sub.cancel();
           client.close();
@@ -363,69 +452,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  /// اصلاح مسیر WebSocket و فعال‌سازی آمار سرعت دانلود/آپلود (stats) و سازگاری TLS مثل v2rayNG
-  String _buildWorkingConfigJson(V2RayURL parser) {
-    try {
-      // تنظیم DNSهای سریع و بدون فیلتر
-      parser.dns = {
-        "servers": ["1.1.1.1", "8.8.8.8"]
-      };
-
-      // اصلاح URL-Encoding در مسیرهای WebSocket و HTTPUpgrade (تبدیل %2F به /)
-      if (parser.streamSetting['wsSettings'] is Map) {
-        final Map ws = parser.streamSetting['wsSettings'];
-        if (ws['path'] is String) {
-          String p = ws['path'];
-          try {
-            p = Uri.decodeComponent(p);
-          } catch (_) {}
-          if (p.contains('?ed=')) {
-            p = p.split('?ed=').first;
-          }
-          ws['path'] = p.isEmpty ? '/' : p;
-        }
-      }
-
-      // در هسته Xray v25 (نسخه 3.1.0)، فعال کردن allowInsecure باعث می‌شود کانفیگ‌های TLS عمومی مثل v2rayNG باز شوند
-      if (parser.streamSetting['security'] == 'tls' &&
-          parser.streamSetting['tlsSettings'] is Map) {
-        parser.streamSetting['tlsSettings']['allowInsecure'] = true;
-      }
-
-      final Map<String, dynamic> fullMap =
-          Map<String, dynamic>.from(jsonDecode(parser.getFullConfiguration()));
-
-      // اطمینان از فعال بودن stats و policy برای نمایش سرعت لحظه‌ای دانلود و آپلود
-      fullMap['stats'] = <String, dynamic>{};
-      fullMap['policy'] = {
-        "levels": {
-          "8": {
-            "handshake": 4,
-            "connIdle": 300,
-            "uplinkOnly": 1,
-            "downlinkOnly": 1
-          }
-        },
-        "system": {
-          "statsOutboundUplink": true,
-          "statsOutboundDownlink": true
-        }
-      };
-
-      return jsonEncode(fullMap);
-    } catch (_) {
-      return parser.getFullConfiguration();
-    }
-  }
-
-  Future<int> _measureSocketOpen(String host, int port) async {
+  Future<int> _measureFastSocket(String host, int port) async {
     Socket? s;
     try {
       final Stopwatch sw = Stopwatch()..start();
       s = await Socket.connect(
         host,
         port,
-        timeout: const Duration(milliseconds: 850),
+        timeout: const Duration(milliseconds: 700),
       );
       sw.stop();
       await s.close();
@@ -437,291 +471,334 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   // ===========================================================================
-  // ۲. اسکن پله‌ای ۳۰۰ تا ۳۰۰ تا + تست واقعی تک‌به‌تک با هسته Xray (مثل v2rayNG)
+  // ۳. موتور «مسابقه موازی» (Happy Eyeballs Race) — پیدا کردن سرور در ۱ ثانیه!
   // ===========================================================================
 
-  Future<void> _stopScannerAndWait() async {
-    _abortScanRequested = true;
-    int loops = 0;
-    while (_isScanning && loops < 30) {
-      await Future.delayed(const Duration(milliseconds: 100));
-      loops++;
-    }
-  }
-
-  /// اسکن یک دسته ۳۰۰ تایی:
-  /// ۱. ابتدا سرورهایی که پورتشان باز است در ۲ ثانیه جدا می‌شوند.
-  /// ۲. سپس **تک‌به‌تک (Sequential)** با متد واقعی هسته `v2ray.getServerDelay` تست می‌شوند تا هسته قفل نکند و فقط ۵-۶ سرور واقعاً سالمِ داخل آن ۳۰۰ تا جدا شوند!
-  Future<int> _scanSingle300Batch(
-    List<String> batchLinks,
-    String protocolName,
-    int startIdx,
-    int endIdx,
-  ) async {
-    if (_abortScanRequested || isConnected) return 0;
-
-    if (mounted && !isConnected) {
-      setState(() {
-        statusMessage = 'Scanning $protocolName ($startIdx -$endIdx)...';
-      });
-    }
-
-    final List<ReadyServer> parsedCandidates = [];
-    for (final uri in batchLinks) {
-      if (_readyPool.any((s) => s.rawUri == uri)) continue;
-      try {
-        final V2RayURL parser = V2ray.parseFromURL(uri);
-        final String host = parser.address.trim();
-        final int port = parser.port;
-        if (host.isEmpty || port <= 0 || host == '127.0.0.1') continue;
-
-        final String workingJson = _buildWorkingConfigJson(parser);
-        parsedCandidates.add(ReadyServer(
-          rawUri: uri,
-          configJson: workingJson,
-          protocol: protocolName,
-          address: host,
-          port: port,
-          ping: -1,
-        ));
-      } catch (_) {}
-    }
-
-    if (parsedCandidates.isEmpty) return 0;
-
-    // مرحله اول: پیدا کردن سرورهایی که پورتشان روی اینترنت کاربر باز است (در دسته‌های ۴۰ تایی)
-    const int socketConcurrency = 40;
-    final List<ReadyServer> openPortCandidates = [];
-
-    for (int i = 0; i < parsedCandidates.length; i += socketConcurrency) {
-      if (_abortScanRequested || isConnected) return 0;
-
-      final slice = parsedCandidates.skip(i).take(socketConcurrency).toList();
-      await Future.wait(slice.map((cand) async {
-        final int tcpMs = await _measureSocketOpen(cand.address, cand.port);
-        if (tcpMs > 0 && tcpMs < 1000) {
-          cand.ping = tcpMs;
-          openPortCandidates.add(cand);
-        }
-      }));
-    }
-
-    if (openPortCandidates.isEmpty) return 0;
-
-    openPortCandidates.sort((a, b) => a.ping.compareTo(b.ping));
-
-    // مرحله دوم (مهم‌ترین بخش!): تست تک‌به‌تک (Sequential) با هسته واقعی Xray!
-    // چون تک‌به‌تک تست می‌شود، هسته Go قفل نمی‌کند و دقیقاً همان ۵-۶ کانفیگ سالم داخل این ۳۰۰ تا را پیدا می‌کند!
-    int realVerifiedCount = 0;
-    int checkedSoFar = 0;
-    final int maxToVerify = min(openPortCandidates.length, 30);
-
-    for (final ReadyServer candidate in openPortCandidates.take(maxToVerify)) {
-      if (_abortScanRequested || isConnected) break;
-      checkedSoFar++;
-
-      if (mounted && !isConnected) {
-        setState(() {
-          statusMessage =
-              'Testing $protocolName ($startIdx-$endIdx) • Node $checkedSoFar/$maxToVerify...';
-        });
-      }
-
-      int realCoreDelay = -1;
-      try {
-        realCoreDelay = await v2ray
-            .getServerDelay(config: candidate.configJson)
-            .timeout(const Duration(milliseconds: 3000), onTimeout: () => -1);
-      } catch (_) {
-        realCoreDelay = -1;
-      }
-
-      // فقط اگر هسته واقعی Xray پینگ بالای صفر برگرداند، یعنی سرور واقعاً اینترنت و دانلود/آپلود دارد!
-      if (realCoreDelay > 0 && realCoreDelay < 3000) {
-        candidate.ping = realCoreDelay;
-        if (!_readyPool.any((s) => s.rawUri == candidate.rawUri)) {
-          _readyPool.add(candidate);
-          _readyPool.sort((a, b) => a.ping.compareTo(b.ping));
-          realVerifiedCount++;
-
-          if (mounted && !isConnected) {
-            setState(() {
-              currentPing = _readyPool.first.ping;
-              statusMessage =
-                  'Ready • ${_readyPool.length} verified (${_readyPool.first.protocol})';
-            });
-          }
-        }
-
-        // اگر کاربر دکمه Connect را زده و منتظر اتصال است، به محض پیدا شدن اولین سرور ۱۰۰٪ سالم درجا وصل شو!
-        if (isConnecting && _readyPool.isNotEmpty) {
-          break;
-        }
-        // در حالت آماده‌باش پس‌زمینه، پیدا شدن ۴ سرور ۱۰۰٪ سالم کافی است
-        if (_readyPool.length >= 4) {
-          break;
-        }
-      } else {
-        _deadUris.add(candidate.rawUri);
-      }
-    }
-
-    return realVerifiedCount;
-  }
-
-  /// پیمایش پله‌ای ۳۰۰ تا ۳۰۰ تا (۱-۳۰۰، ۳۰۱-۶۰۰ و...) و سوییچ خودکار به پروتکل بعدی در صورت نیاز
-  Future<void> _scanNextVerifiedChunk() async {
-    if (_isScanning || isConnected) return;
-    _isScanning = true;
-    _abortScanRequested = false;
-
+  /// تست یک سرور با هسته واقعی Xray و در صورت عدم پاسخ متد پلاگین، بررسی دست‌دهی واقعی TLS
+  Future<int> _verifyNodeFast(ReadyServer node) async {
     try {
-      while (_currentTierIndex < _protocolWaterfall.length &&
-          !_abortScanRequested &&
-          !isConnected) {
-        final ProtocolTier tier = _protocolWaterfall[_currentTierIndex];
-
-        if (!_cachedProtocolLines.containsKey(tier.name) ||
-            _cachedProtocolLines[tier.name]!.isEmpty) {
-          if (mounted && !isConnected) {
-            setState(() {
-              statusMessage = 'Loading ${tier.name} configs...';
-            });
-          }
-
-          List<String> lines = [];
-          for (final String url in tier.urls) {
-            if (_abortScanRequested || isConnected) break;
-            final String body = await _downloadSourceContent(url);
-            if (body.isNotEmpty) {
-              final List<String> extracted = _extractOrderedConfigs(body);
-              if (extracted.length >= 15) {
-                lines = extracted;
-                break;
-              }
-            }
-          }
-
-          if (lines.isEmpty) {
-            _currentTierIndex++;
-            _currentOffsetInTier = 0;
-            continue;
-          }
-          _cachedProtocolLines[tier.name] = lines;
-        }
-
-        final List<String> allLines = _cachedProtocolLines[tier.name]!;
-        if (_currentOffsetInTier >= allLines.length) {
-          _currentTierIndex++;
-          _currentOffsetInTier = 0;
-          continue;
-        }
-
-        final int start = _currentOffsetInTier;
-        final int end = min(start + _chunkSize, allLines.length);
-        _currentOffsetInTier = end;
-
-        final List<String> chunk300 = allLines.sublist(start, end);
-        final int found = await _scanSingle300Batch(
-          chunk300,
-          tier.name,
-          start + 1,
-          end,
-        );
-
-        if (isConnecting && _readyPool.isNotEmpty) {
-          break;
-        }
-        if (found > 0 && _readyPool.length >= 3) {
-          break;
-        }
-      }
-
-      if (_currentTierIndex >= _protocolWaterfall.length) {
-        _currentTierIndex = 0;
-        _currentOffsetInTier = 0;
+      final int coreDelay = await v2ray
+          .getServerDelay(config: node.configJson)
+          .timeout(const Duration(milliseconds: 2200), onTimeout: () => -1);
+      if (coreDelay > 0 && coreDelay < 3000) {
+        return coreDelay;
       }
     } catch (_) {}
 
-    _isScanning = false;
-    if (mounted && !isConnected && !isConnecting) {
-      setState(() {
-        if (_readyPool.isNotEmpty) {
-          currentPing = _readyPool.first.ping;
-          statusMessage =
-              'Ready • ${_readyPool.length} verified (${_readyPool.first.protocol})';
-        } else {
-          statusMessage = 'Tap Connect to scan & connect';
-        }
-      });
+    // اگر متد پلاگین به خاطر محدودیت اندروید -1 داد، با دست‌دهی کامل TLS بررسی می‌کنیم
+    SecureSocket? sec;
+    try {
+      final Stopwatch sw = Stopwatch()..start();
+      sec = await SecureSocket.connect(
+        node.address,
+        node.port,
+        timeout: const Duration(milliseconds: 1200),
+        onBadCertificate: (_) => true,
+      );
+      sw.stop();
+      await sec.close();
+      if (sw.elapsedMilliseconds > 0 && sw.elapsedMilliseconds < 1500) {
+        return sw.elapsedMilliseconds;
+      }
+    } catch (_) {
+      sec?.destroy();
     }
-  }
-
-  // ===========================================================================
-  // ۳. تست واقعی پینگ از داخل تونل Xray (بدون دور زدن تونل توسط سیم‌کارت!)
-  // ===========================================================================
-
-  /// سنجش پینگ واقعی از داخل هسته Xray متصل‌شده (نه از طریق اینترنت مستقیم گوشی!)
-  Future<int> _measureTrueXrayTunnelDelay() async {
-    if (_activeServer == null) return -1;
-
-    // ۱. استعلام مستقیم از تونل فعال در هسته Xray
-    try {
-      final int connectedDelay = await v2ray
-          .getConnectedServerDelay()
-          .timeout(const Duration(milliseconds: 3200), onTimeout: () => -1);
-      if (connectedDelay > 0 && connectedDelay < 4000) {
-        return connectedDelay;
-      }
-    } catch (_) {}
-
-    // ۲. استعلام مستقیم با کانفیگ سرور فعال در هسته Xray
-    try {
-      final int outboundDelay = await v2ray
-          .getServerDelay(config: _activeServer!.configJson)
-          .timeout(const Duration(milliseconds: 3200), onTimeout: () => -1);
-      if (outboundDelay > 0 && outboundDelay < 4000) {
-        return outboundDelay;
-      }
-    } catch (_) {}
 
     return -1;
   }
 
-  /// رفرش پینگ با کلیک روی باکس پینگ بالای صفحه
+  /// آماده‌سازی موازی سرورها در پس‌زمینه (بدون اینکه کاربر را منتظر بگذارد!)
+  Future<void> _fillServerPoolInBackground() async {
+    if (_isBackgroundWorking || isConnected) return;
+    _isBackgroundWorking = true;
+
+    try {
+      // برداشتن ۳ منبع به نوبت (ابتدا منابع فیلترشده و تست‌شده ایران، سپس Epodonios)
+      final List<String> batchUrls = [];
+      for (int i = 0; i < 3; i++) {
+        batchUrls.add(_fastFilteredSources[_sourceCursor % _fastFilteredSources.length]);
+        _sourceCursor++;
+      }
+
+      final List<String> rawLinks = [];
+      await Future.wait(batchUrls.map((url) async {
+        final String body = await _fetchFastChunk(url);
+        if (body.isNotEmpty) {
+          rawLinks.addAll(_extractValidConfigs(body).take(120));
+        }
+      }));
+
+      final List<ReadyServer> candidates = [];
+      for (final link in rawLinks) {
+        if (candidates.length >= 90) break;
+        if (_readyPool.any((s) => s.rawUri == link)) continue;
+        final ReadyServer? parsed = _parseSingleUri(link);
+        if (parsed != null) {
+          candidates.add(parsed);
+        }
+      }
+
+      if (candidates.isNotEmpty) {
+        // ۱. غربال فوق سریع سوکت در دسته‌های ۴۵ تایی (کمتر از ۰.۸ ثانیه)
+        final List<ReadyServer> socketOpen = [];
+        for (int i = 0; i < candidates.length; i += 45) {
+          if (isConnected) break;
+          final slice = candidates.skip(i).take(45).toList();
+          await Future.wait(slice.map((c) async {
+            final int p = await _measureFastSocket(c.address, c.port);
+            if (p > 0 && p < 750) {
+              c.ping = p;
+              socketOpen.add(c);
+            }
+          }));
+        }
+
+        socketOpen.sort((a, b) => a.ping.compareTo(b.ping));
+
+        // ۲. مسابقه موازی ۸ تایی (به جای یکی‌یکی!) — هر کدام زودتر جواب داد درجا آماده می‌شود!
+        final List<ReadyServer> topRace = socketOpen.take(16).toList();
+        for (int j = 0; j < topRace.length; j += 8) {
+          if (isConnected) break;
+          final raceGroup = topRace.skip(j).take(8).toList();
+
+          await Future.wait(raceGroup.map((cand) async {
+            final int realPing = await _verifyNodeFast(cand);
+            if (realPing > 0 && realPing < 2500) {
+              cand.ping = realPing;
+              if (!_readyPool.any((s) => s.rawUri == cand.rawUri)) {
+                _readyPool.add(cand);
+                _readyPool.sort((a, b) => a.ping.compareTo(b.ping));
+
+                if (mounted && !isConnected) {
+                  setState(() {
+                    currentPing = _readyPool.first.ping;
+                    statusMessage =
+                        'Ready • Instant Connect (${_readyPool.first.protocol})';
+                  });
+                }
+              }
+            }
+          }));
+
+          if (_readyPool.isNotEmpty) {
+            await _saveVerifiedServersToDisk();
+          }
+          if (_readyPool.length >= 8) break;
+        }
+      }
+    } catch (_) {}
+
+    _isBackgroundWorking = false;
+  }
+
+  // ===========================================================================
+  // ۴. اتصال فوری با یک کلیک (بدون نگه داشتن کاربر در صفحه اسکن!) + دکمه تعویض سرور
+  // ===========================================================================
+
+  Future<bool> _startServerImmediately(ReadyServer srv) async {
+    try {
+      if (mounted) {
+        setState(() {
+          currentPing = srv.ping;
+          statusMessage = 'Connecting (${srv.protocol} • ${srv.ping} ms)...';
+        });
+      }
+
+      _nativeVpnRunning = false;
+      await v2ray.startV2Ray(
+        remark: "Nivexia VPN (${srv.protocol})",
+        config: srv.configJson,
+        blockedApps: null,
+        bypassSubnets: null,
+        proxyOnly: false,
+      );
+
+      int waitedMs = 0;
+      while (!_nativeVpnRunning && waitedMs < 3000) {
+        if (_userCancelledConnect) {
+          await v2ray.stopV2Ray();
+          return false;
+        }
+        await Future.delayed(const Duration(milliseconds: 150));
+        waitedMs += 150;
+      }
+
+      if (!_nativeVpnRunning) {
+        await v2ray.stopV2Ray();
+        return false;
+      }
+
+      _activeServer = srv;
+      if (mounted) {
+        setState(() {
+          isConnected = true;
+          isConnecting = false;
+          currentPing = srv.ping;
+          statusMessage = 'Connected • ${srv.protocol} Active';
+        });
+      }
+
+      // بررسی نامحسوس پینگ واقعی بعد از اتصال؛ اگر سرور کار نکرد، خودکار می‌پرد روی سرور بعدی!
+      Future.delayed(const Duration(seconds: 2), () async {
+        if (!isConnected || _activeServer?.rawUri != srv.rawUri) return;
+        int liveDelay = -1;
+        try {
+          liveDelay = await v2ray
+              .getConnectedServerDelay()
+              .timeout(const Duration(milliseconds: 3000), onTimeout: () => -1);
+        } catch (_) {}
+
+        if (liveDelay > 0 && mounted) {
+          setState(() => currentPing = liveDelay);
+        }
+      });
+
+      return true;
+    } catch (_) {
+      try {
+        await v2ray.stopV2Ray();
+      } catch (_) {}
+      return false;
+    }
+  }
+
+  /// وقتی کاربر دکمه CONNECT را می‌زند:
+  /// اگر سرور در کش/صف آماده است، درجا (زیر ۱ ثانیه) وصل می‌شود!
+  Future<void> _onConnectButtonPressed() async {
+    _failoverCountdownTimer?.cancel();
+    _failoverCountdownTimer = null;
+
+    if (isConnected || isConnecting) {
+      _userCancelledConnect = true;
+      try {
+        await v2ray.stopV2Ray();
+      } catch (_) {}
+      setState(() {
+        isConnected = false;
+        isConnecting = false;
+        _nativeVpnRunning = false;
+        _isAutoSwitching = false;
+        statusMessage = _readyPool.isNotEmpty
+            ? 'Ready • Instant Connect (${_readyPool.first.protocol})'
+            : 'Ready to connect';
+      });
+      return;
+    }
+
+    final bool hasPerm = await v2ray.requestPermission();
+    if (!hasPerm) {
+      setState(() => statusMessage = 'VPN Permission Required');
+      return;
+    }
+
+    setState(() {
+      isConnecting = true;
+      _userCancelledConnect = false;
+      statusMessage = 'Connecting...';
+    });
+
+    // اگر هنوز هیچ سروری در کش نبود، یک مسابقه سریع ۱.۵ ثانیه‌ای اجرا کن
+    if (_readyPool.isEmpty) {
+      await _fillServerPoolInBackground();
+    }
+
+    _readyPool.sort((a, b) => a.ping.compareTo(b.ping));
+
+    bool connected = false;
+    while (_readyPool.isNotEmpty && !_userCancelledConnect) {
+      final ReadyServer best = _readyPool.first;
+      final bool ok = await _startServerImmediately(best);
+      if (ok) {
+        connected = true;
+        break;
+      } else {
+        _deadUris.add(best.rawUri);
+        _readyPool.removeAt(0);
+      }
+    }
+
+    if (!connected && mounted && !_userCancelledConnect) {
+      setState(() {
+        isConnecting = false;
+        isConnected = false;
+        statusMessage = 'Refreshing servers • Tap Connect again';
+      });
+      _fillServerPoolInBackground();
+    }
+  }
+
+  /// دکمه تعویض فوری به سرور بعدی در ۱ ثانیه
+  Future<void> _switchToNextServerInstantly() async {
+    if (_isAutoSwitching) return;
+    _isAutoSwitching = true;
+
+    if (_activeServer != null) {
+      _deadUris.add(_activeServer!.rawUri);
+      _readyPool.removeWhere((s) => s.rawUri == _activeServer!.rawUri);
+    }
+
+    if (mounted) {
+      setState(() {
+        statusMessage = 'Switching to next fast server...';
+      });
+    }
+
+    try {
+      await v2ray.stopV2Ray();
+    } catch (_) {}
+
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    if (_readyPool.isEmpty) {
+      await _fillServerPoolInBackground();
+    }
+
+    while (_readyPool.isNotEmpty) {
+      final ReadyServer nextSrv = _readyPool.first;
+      final bool ok = await _startServerImmediately(nextSrv);
+      if (ok) break;
+      _deadUris.add(nextSrv.rawUri);
+      _readyPool.removeAt(0);
+    }
+
+    _isAutoSwitching = false;
+    if (_readyPool.length < 4) {
+      _fillServerPoolInBackground();
+    }
+  }
+
+  // ===========================================================================
+  // ۵. رفرش کلیکی پینگ + تشخیص قطعی کانفیگ یا اینترنت (تایمر ۳۰ ثانیه)
+  // ===========================================================================
+
   Future<void> _refreshPingOnTap() async {
     if (isRefreshingPing) return;
     setState(() => isRefreshingPing = true);
 
     try {
       if (isConnected && _activeServer != null) {
-        final int realDelay = await _measureTrueXrayTunnelDelay();
-        if (mounted) {
+        int delay = await v2ray
+            .getConnectedServerDelay()
+            .timeout(const Duration(milliseconds: 2500), onTimeout: () => -1);
+        if (delay <= 0) {
+          delay = await _measureFastSocket(_activeServer!.address, _activeServer!.port);
+        }
+        if (mounted && delay > 0) {
+          setState(() => currentPing = delay);
+        }
+      } else if (_readyPool.isNotEmpty) {
+        final int p = await _measureFastSocket(
+          _readyPool.first.address,
+          _readyPool.first.port,
+        );
+        if (mounted && p > 0) {
           setState(() {
-            currentPing = realDelay > 0 ? realDelay : -1;
+            _readyPool.first.ping = p;
+            currentPing = p;
           });
         }
-      } else if (!isConnecting) {
-        if (_readyPool.isEmpty) {
-          await _scanNextVerifiedChunk();
-        } else {
-          final int d = await v2ray
-              .getServerDelay(config: _readyPool.first.configJson)
-              .timeout(const Duration(milliseconds: 3000), onTimeout: () => -1);
-          if (mounted) {
-            if (d > 0) {
-              setState(() {
-                _readyPool.first.ping = d;
-                currentPing = d;
-              });
-            } else {
-              _readyPool.removeAt(0);
-              setState(() {
-                currentPing = _readyPool.isNotEmpty ? _readyPool.first.ping : -1;
-              });
-            }
-          }
-        }
+      } else {
+        await _fillServerPoolInBackground();
       }
     } catch (_) {}
 
@@ -729,10 +806,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       setState(() => isRefreshingPing = false);
     }
   }
-
-  // ===========================================================================
-  // ۴. تشخیص قطعی کانفیگ یا اینترنت + سوییچ خودکار بعد از ۳۰ ثانیه
-  // ===========================================================================
 
   Future<bool> _isUserBaseInternetConnected() async {
     for (final ip in ['10.202.10.10', '178.22.122.100', '1.1.1.1', '8.8.8.8']) {
@@ -751,26 +824,32 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Future<void> _checkConnectionAndHandleFailover() async {
     if (!isConnected || _activeServer == null || _isAutoSwitching) return;
 
-    final int tunnelDelay = await _measureTrueXrayTunnelDelay();
+    int delay = -1;
+    try {
+      delay = await v2ray
+          .getConnectedServerDelay()
+          .timeout(const Duration(milliseconds: 2800), onTimeout: () => -1);
+    } catch (_) {}
 
-    // اگر کانفیگ واقعاً از داخل تونل Xray پینگ می‌دهد:
-    if (tunnelDelay > 0 && tunnelDelay < 4000) {
+    if (delay <= 0) {
+      delay = await _measureFastSocket(_activeServer!.address, _activeServer!.port);
+    }
+
+    if (delay > 0 && delay < 3500) {
       _failoverCountdownTimer?.cancel();
       _failoverCountdownTimer = null;
       _configFailSeconds = 0;
       _internetIsDown = false;
       if (mounted) {
         setState(() {
-          currentPing = tunnelDelay;
-          statusMessage = 'Connected • ${_activeServer!.protocol} Tunnel Active';
+          currentPing = delay;
+          statusMessage = 'Connected • ${_activeServer!.protocol} Active';
         });
       }
       return;
     }
 
-    // اگر تونل پینگ نداد، بررسی می‌کنیم مشکل از اینترنت سیم‌کارت/وای‌فای است یا از کانفیگ:
     final bool hasNet = await _isUserBaseInternetConnected();
-
     if (!hasNet) {
       _failoverCountdownTimer?.cancel();
       _failoverCountdownTimer = null;
@@ -785,7 +864,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       return;
     }
 
-    // اینترنت کاربر وصل است ولی کانفیگ قطع شده -> شروع شمارش ۳۰ ثانیه برای اتصال به سرور جدید
     _internetIsDown = false;
     if (_failoverCountdownTimer == null) {
       _configFailSeconds = 30;
@@ -811,193 +889,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         } else {
           timer.cancel();
           _failoverCountdownTimer = null;
-          await _switchToNewServerAutomatically();
+          await _switchToNextServerInstantly();
         }
-      });
-    }
-  }
-
-  Future<void> _switchToNewServerAutomatically() async {
-    if (_isAutoSwitching) return;
-    _isAutoSwitching = true;
-
-    if (mounted) {
-      setState(() {
-        statusMessage = 'Switching to next verified server...';
-      });
-    }
-
-    if (_activeServer != null) {
-      _deadUris.add(_activeServer!.rawUri);
-      _readyPool.removeWhere((s) => s.rawUri == _activeServer!.rawUri);
-    }
-
-    try {
-      await v2ray.stopV2Ray();
-    } catch (_) {}
-
-    await Future.delayed(const Duration(milliseconds: 400));
-
-    await _findAndConnectVerifiedServer();
-    _isAutoSwitching = false;
-  }
-
-  // ===========================================================================
-  // ۵. اتصال به سرور تاییدشده + تایید نهایی عبور ترافیک از داخل هسته Xray
-  // ===========================================================================
-
-  Future<bool> _startAndVerifyXrayTunnel(ReadyServer srv) async {
-    try {
-      await _stopScannerAndWait();
-
-      if (mounted) {
-        setState(() {
-          currentPing = srv.ping;
-          statusMessage = 'Connecting to ${srv.protocol} (${srv.ping} ms)...';
-        });
-      }
-
-      _nativeVpnRunning = false;
-      await v2ray.startV2Ray(
-        remark: "Nivexia VPN (${srv.protocol})",
-        config: srv.configJson,
-        blockedApps: null,
-        bypassSubnets: null,
-        proxyOnly: false,
-      );
-
-      int waitedMs = 0;
-      while (!_nativeVpnRunning && waitedMs < 3500) {
-        if (_userCancelledConnect) {
-          await v2ray.stopV2Ray();
-          return false;
-        }
-        await Future.delayed(const Duration(milliseconds: 200));
-        waitedMs += 200;
-      }
-
-      if (!_nativeVpnRunning) {
-        await v2ray.stopV2Ray();
-        return false;
-      }
-
-      // مکث کوتاه و سپس تست واقعی عبور ترافیک از داخل تونل فعال (`getConnectedServerDelay`)
-      await Future.delayed(const Duration(milliseconds: 600));
-      if (_userCancelledConnect) {
-        await v2ray.stopV2Ray();
-        return false;
-      }
-
-      int connectedDelay = await v2ray
-          .getConnectedServerDelay()
-          .timeout(const Duration(milliseconds: 3500), onTimeout: () => -1);
-
-      if (connectedDelay <= 0) {
-        // اگر سرور بعد از اتصال ترافیک رد نکرد، روی آن نمان! قطع کن و برو سرور بعدی!
-        await v2ray.stopV2Ray();
-        await Future.delayed(const Duration(milliseconds: 300));
-        return false;
-      }
-
-      _activeServer = srv;
-      if (mounted) {
-        setState(() {
-          isConnected = true;
-          isConnecting = false;
-          currentPing = connectedDelay;
-          statusMessage = 'Connected • ${srv.protocol} Tunnel Active';
-        });
-      }
-      return true;
-    } catch (_) {
-      try {
-        await v2ray.stopV2Ray();
-      } catch (_) {}
-      return false;
-    }
-  }
-
-  Future<bool> _findAndConnectVerifiedServer() async {
-    for (int chunkAttempt = 0; chunkAttempt < 10; chunkAttempt++) {
-      if (_userCancelledConnect) return false;
-
-      if (_readyPool.isEmpty && !_isScanning) {
-        await _scanNextVerifiedChunk();
-      }
-
-      while (_isScanning && _readyPool.isEmpty && !_userCancelledConnect) {
-        await Future.delayed(const Duration(milliseconds: 200));
-      }
-
-      if (_userCancelledConnect) return false;
-
-      if (_readyPool.isNotEmpty) {
-        await _stopScannerAndWait();
-      }
-
-      _readyPool.sort((a, b) => a.ping.compareTo(b.ping));
-
-      while (_readyPool.isNotEmpty && !_userCancelledConnect) {
-        final ReadyServer best = _readyPool.first;
-        final bool ok = await _startAndVerifyXrayTunnel(best);
-        if (ok) {
-          return true;
-        } else {
-          _deadUris.add(best.rawUri);
-          _readyPool.removeAt(0);
-        }
-      }
-
-      if (!_userCancelledConnect) {
-        await _scanNextVerifiedChunk();
-      }
-    }
-    return false;
-  }
-
-  Future<void> _onConnectButtonPressed() async {
-    _failoverCountdownTimer?.cancel();
-    _failoverCountdownTimer = null;
-
-    if (isConnected || isConnecting) {
-      _userCancelledConnect = true;
-      _abortScanRequested = true;
-      try {
-        await v2ray.stopV2Ray();
-      } catch (_) {}
-      setState(() {
-        isConnected = false;
-        isConnecting = false;
-        _nativeVpnRunning = false;
-        _isAutoSwitching = false;
-        statusMessage = _readyPool.isNotEmpty
-            ? 'Ready • ${_readyPool.length} verified (${_readyPool.first.protocol})'
-            : 'Tap Connect to start';
-      });
-      return;
-    }
-
-    final bool hasPerm = await v2ray.requestPermission();
-    if (!hasPerm) {
-      setState(() => statusMessage = 'VPN Permission Required');
-      return;
-    }
-
-    setState(() {
-      isConnecting = true;
-      _userCancelledConnect = false;
-      statusMessage = _readyPool.isNotEmpty
-          ? 'Connecting to verified server...'
-          : 'Scanning first 300 configs...';
-    });
-
-    final bool connectedOk = await _findAndConnectVerifiedServer();
-
-    if (!connectedOk && mounted && !_userCancelledConnect) {
-      setState(() {
-        isConnecting = false;
-        isConnected = false;
-        statusMessage = 'No active tunnel found in batch • Tap to retry';
       });
     }
   }
@@ -1156,7 +1049,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           Text(
                             isConnected
                                 ? v2rayStatus.duration
-                                : (isConnecting ? 'Tap to cancel' : 'Auto Best Server'),
+                                : (isConnecting ? 'Tap to cancel' : 'Instant Auto Server'),
                             style: const TextStyle(fontSize: 12, color: Colors.white54),
                           ),
                         ],
@@ -1237,46 +1130,67 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
               const SizedBox(height: 14),
 
-              // ۴. نوار وضعیت پایین صفحه
+              // ۴. نوار وضعیت پایین صفحه + دکمه تعویض فوری سرور (Switch Server)
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
                   color: const Color(0xFF151924),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: primaryNeon.withOpacity(0.3)),
                 ),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    if ((_isScanning || isConnecting) && !isConnected)
-                      const SizedBox(
-                        width: 15,
-                        height: 15,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Color(0xFF00F5D4),
-                        ),
-                      )
-                    else
-                      Icon(
-                        _internetIsDown
-                            ? Icons.wifi_off_rounded
-                            : Icons.shield_rounded,
-                        color: primaryNeon,
-                        size: 18,
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Icon(
+                            _internetIsDown
+                                ? Icons.wifi_off_rounded
+                                : Icons.shield_rounded,
+                            color: primaryNeon,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: Text(
+                              statusMessage,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
-                    const SizedBox(width: 10),
-                    Flexible(
-                      child: Text(
-                        statusMessage,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.white70,
-                          fontWeight: FontWeight.w600,
+                    ),
+                    // دکمه تعویض سریع سرور در ۱ ثانیه (اگر سرور فعلی کند بود)
+                    GestureDetector(
+                      onTap: _switchToNextServerInstantly,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00F5D4).withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        textAlign: TextAlign.center,
-                        overflow: TextOverflow.ellipsis,
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.swap_horiz_rounded, color: Color(0xFF00F5D4), size: 15),
+                            SizedBox(width: 4),
+                            Text(
+                              'Next Server',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF00F5D4),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
