@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_v2ray_client/flutter_v2ray.dart';
@@ -18,77 +17,149 @@ void main() {
   runApp(const NivexiaApp());
 }
 
+class AppThemePalette {
+  final String name;
+  final Color bg;
+  final Color card;
+  final Color surface;
+  final Color primary;
+  final Color secondary;
+
+  const AppThemePalette({
+    required this.name,
+    required this.bg,
+    required this.card,
+    required this.surface,
+    required this.primary,
+    required this.secondary,
+  });
+}
+
+const List<AppThemePalette> kThemes = [
+  AppThemePalette(
+    name: 'Cyber Cyan',
+    bg: Color(0xFF080B11),
+    card: Color(0xFF121722),
+    surface: Color(0xFF181F2E),
+    primary: Color(0xFF00F5D4),
+    secondary: Color(0xFF7B2CBF),
+  ),
+  AppThemePalette(
+    name: 'Emerald Matrix',
+    bg: Color(0xFF060E0B),
+    card: Color(0xFF0E1B16),
+    surface: Color(0xFF152720),
+    primary: Color(0xFF10B981),
+    secondary: Color(0xFF059669),
+  ),
+  AppThemePalette(
+    name: 'Royal Gold',
+    bg: Color(0xFF0E0A08),
+    card: Color(0xFF1A1310),
+    surface: Color(0xFF261C17),
+    primary: Color(0xFFF59E0B),
+    secondary: Color(0xFFE11D48),
+  ),
+  AppThemePalette(
+    name: 'Oceanic Blue',
+    bg: Color(0xFF070C16),
+    card: Color(0xFF101827),
+    surface: Color(0xFF1B253B),
+    primary: Color(0xFF38BDF8),
+    secondary: Color(0xFF6366F1),
+  ),
+];
+
 class NivexiaApp extends StatelessWidget {
   const NivexiaApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Nivexia',
+      title: 'Nivexia VPN',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF090B10),
-        primaryColor: const Color(0xFF00F5D4),
+        scaffoldBackgroundColor: kThemes[0].bg,
       ),
       home: const HomeScreen(),
     );
   }
 }
 
-class ReadyServer {
+class ServerNode {
   final String rawUri;
+  final String name;
+  final String group;
   final String configJson;
   final String protocol;
   final String address;
   final int port;
   final int localHttpPort;
-  int ping;
+  String countryCode;
+  String countryName;
+  int tcpPing;
+  int realPing;
 
-  ReadyServer({
+  ServerNode({
     required this.rawUri,
+    required this.name,
+    required this.group,
     required this.configJson,
     required this.protocol,
     required this.address,
     required this.port,
     required this.localHttpPort,
-    required this.ping,
+    this.countryCode = 'UN',
+    this.countryName = 'Unknown',
+    this.tcpPing = -1,
+    this.realPing = -1,
   });
+
+  int get displayPing => realPing > 0 ? realPing : tcpPing;
 
   Map<String, dynamic> toMap() => {
         'rawUri': rawUri,
+        'name': name,
+        'group': group,
         'configJson': configJson,
         'protocol': protocol,
         'address': address,
         'port': port,
         'localHttpPort': localHttpPort,
-        'ping': ping,
+        'countryCode': countryCode,
+        'countryName': countryName,
+        'tcpPing': tcpPing,
+        'realPing': realPing,
       };
 
-  factory ReadyServer.fromMap(Map<String, dynamic> map) => ReadyServer(
+  factory ServerNode.fromMap(Map<String, dynamic> map) => ServerNode(
         rawUri: map['rawUri'] ?? '',
+        name: map['name'] ?? 'Server',
+        group: map['group'] ?? 'irancell',
         configJson: map['configJson'] ?? '',
         protocol: map['protocol'] ?? 'VLESS',
         address: map['address'] ?? '',
         port: map['port'] ?? 443,
         localHttpPort: map['localHttpPort'] ?? 10809,
-        ping: map['ping'] ?? 150,
+        countryCode: map['countryCode'] ?? 'UN',
+        countryName: map['countryName'] ?? 'Unknown',
+        tcpPing: map['tcpPing'] ?? -1,
+        realPing: map['realPing'] ?? -1,
       );
 }
 
-class StarParticle {
-  double x;
-  double y;
-  double speed;
-  double size;
-  double opacity;
+class CustomSubEntry {
+  final String input;
+  final String group;
 
-  StarParticle({
-    required this.x,
-    required this.y,
-    required this.speed,
-    required this.size,
-    required this.opacity,
-  });
+  CustomSubEntry({required this.input, required this.group});
+
+  Map<String, dynamic> toMap() => {'input': input, 'group': group};
+
+  factory CustomSubEntry.fromMap(Map<String, dynamic> map) => CustomSubEntry(
+        input: map['input'] ?? '',
+        group: map['group'] ?? 'irancell',
+      );
 }
 
 class HomeScreen extends StatefulWidget {
@@ -98,7 +169,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   late final V2ray v2ray = V2ray(
     onStatusChanged: (status) {
       if (!mounted) return;
@@ -107,9 +178,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         v2rayStatus = status;
         if (st == "CONNECTED") {
           _nativeVpnRunning = true;
+          isConnected = true;
+          isConnecting = false;
         } else if (st == "DISCONNECTED") {
           _nativeVpnRunning = false;
-          if (!isConnecting && !_isAutoSwitching) {
+          if (!isConnecting) {
             isConnected = false;
           }
         }
@@ -118,56 +191,43 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   );
 
   late AnimationController _pulseController;
-  late AnimationController _rocketController;
-  final List<StarParticle> _stars = [];
   V2RayStatus v2rayStatus = V2RayStatus();
+
+  int _themeIndex = 0;
+  AppThemePalette get _theme => kThemes[_themeIndex % kThemes.length];
+
+  String _selectedTab = 'auto';
 
   bool _nativeVpnRunning = false;
   bool isConnected = false;
   bool isConnecting = false;
+  bool isSyncingSubs = false;
+  bool isTestingTcp = false;
+  bool isTestingReal = false;
   bool isRefreshingPing = false;
-  bool _isAutoSwitching = false;
   bool _userCancelled = false;
 
   int currentPing = -1;
-  String statusMessage = 'Tap Connect to launch';
-  String rocketScanDetail = 'Preparing launch sequence...';
+  String statusMessage = 'Ready to connect';
 
-  Timer? _healthWatchdogTimer;
-  Timer? _failoverCountdownTimer;
-  int _configFailSeconds = 0;
-  bool _internetIsDown = false;
+  final List<ServerNode> _irancellServers = [];
+  final List<ServerNode> _mciServers = [];
+  final List<CustomSubEntry> _customSubEntries = [];
+  final Map<String, Map<String, String>> _geoCache = {};
 
-  // لیست کانفیگ‌های سالم ذخیره‌شده از دفعات قبلی (اولویت ۱)
-  final List<ReadyServer> _savedWorkingConfigs = [];
-  // لیست ساب‌لینک‌ها یا کانفیگ‌های اضافه‌شده توسط ادمین/کاربر
-  final List<String> _customUserInputs = [];
-  ReadyServer? _activeServer;
+  ServerNode? _selectedServer;
+  ServerNode? _connectedServer;
 
-  // ۱. فایل کنترل از راه دور ادمین در گیت‌هاب خودت (بدون نیاز به آپدیت برنامه)
-  final List<String> _remoteAdminControlUrls = const [
-    'https://raw.githubusercontent.com/amy-coddwe/Nivexia-app/main/admin_subs.txt',
-    'https://ghfast.top/https://raw.githubusercontent.com/amy-coddwe/Nivexia-app/main/admin_subs.txt',
-    'https://cdn.jsdelivr.net/gh/amy-coddwe/Nivexia-app@main/admin_subs.txt',
+  final List<String> _githubIrancellUrls = const [
+    'https://raw.githubusercontent.com/amy-coddwe/Nivexia-app/main/irancell.txt',
+    'https://ghfast.top/https://raw.githubusercontent.com/amy-coddwe/Nivexia-app/main/irancell.txt',
+    'https://cdn.jsdelivr.net/gh/amy-coddwe/Nivexia-app@main/irancell.txt',
   ];
 
-  // ۲. ساب‌لینک اولویت‌دار هیدیفای / مهسا (۳۰-۴۰ کانفیگ سریع و تست‌شده)
-  final List<String> _priorityMahsaSubUrls = const [
-    'https://raw.githubusercontent.com/hiddify/hiddify-app/refs/heads/main/test.configs/mahsa',
-    'https://ghfast.top/https://raw.githubusercontent.com/hiddify/hiddify-app/refs/heads/main/test.configs/mahsa',
-    'https://cdn.jsdelivr.net/gh/hiddify/hiddify-app@main/test.configs/mahsa',
-  ];
-
-  // ۳. ساب‌لینک‌های پشتیبان Epodonios
-  final List<String> _fallbackEpodoniosUrls = const [
-    'https://ghfast.top/https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt',
-    'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt',
-    'https://ghfast.top/https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vmess.txt',
-    'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vmess.txt',
-    'https://ghfast.top/https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/ss.txt',
-    'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/ss.txt',
-    'https://ghfast.top/https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/ssr.txt',
-    'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/ssr.txt',
+  final List<String> _githubMciUrls = const [
+    'https://raw.githubusercontent.com/amy-coddwe/Nivexia-app/main/mci.txt',
+    'https://ghfast.top/https://raw.githubusercontent.com/amy-coddwe/Nivexia-app/main/mci.txt',
+    'https://cdn.jsdelivr.net/gh/amy-coddwe/Nivexia-app@main/mci.txt',
   ];
 
   @override
@@ -178,155 +238,98 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
 
-    final Random rnd = Random();
-    for (int i = 0; i < 45; i++) {
-      _stars.add(StarParticle(
-        x: rnd.nextDouble(),
-        y: rnd.nextDouble(),
-        speed: 0.008 + rnd.nextDouble() * 0.022,
-        size: 1.2 + rnd.nextDouble() * 2.5,
-        opacity: 0.25 + rnd.nextDouble() * 0.75,
-      ));
-    }
-
-    _rocketController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..addListener(() {
-        if (isConnecting && mounted) {
-          for (final star in _stars) {
-            star.y += star.speed;
-            if (star.y > 1.0) {
-              star.y = 0.0;
-              star.x = Random().nextDouble();
-            }
-          }
-          setState(() {});
-        }
-      });
-
-    _initEngine();
+    _initApp();
   }
 
-  Future<void> _initEngine() async {
+  Future<void> _initApp() async {
     await v2ray.initialize(
       notificationIconResourceType: "mipmap",
       notificationIconResourceName: "ic_launcher",
     );
 
-    await _loadPersistentData();
-
-    _healthWatchdogTimer = Timer.periodic(const Duration(seconds: 12), (_) {
-      if (isConnected && !isConnecting && !_isAutoSwitching) {
-        _checkConnectionAndHandleFailover();
-      }
-    });
+    await _loadSavedState();
+    await _syncAllConfigsFromRemote(silent: true);
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
-    _rocketController.dispose();
-    _healthWatchdogTimer?.cancel();
-    _failoverCountdownTimer?.cancel();
     super.dispose();
   }
 
-  // ===========================================================================
-  // ۱. حافظه دائمی گوشی برای ذخیره کانفیگ‌های سالم و ساب‌های ادمین
-  // ===========================================================================
-
-  Future<File> _getPermanentFile(String fileName) async {
-    final List<String> paths = [
+  Future<File> _getLocalFile(String name) async {
+    final List<String> dirs = [
       '/data/user/0/com.nivexia.nivexia_ping/files',
       '/data/data/com.nivexia.nivexia_ping/files',
       Directory.systemTemp.path,
     ];
-    for (final p in paths) {
+    for (final d in dirs) {
       try {
-        final dir = Directory(p);
+        final dir = Directory(d);
         if (!await dir.exists()) {
           await dir.create(recursive: true);
         }
-        return File('${dir.path}/$fileName');
+        return File('${dir.path}/$name');
       } catch (_) {}
     }
-    return File('${Directory.systemTemp.path}/$fileName');
+    return File('${Directory.systemTemp.path}/$name');
   }
 
-  Future<void> _loadPersistentData() async {
+  Future<void> _loadSavedState() async {
     try {
-      final File workingFile = await _getPermanentFile('nivexia_working_v6.json');
-      if (await workingFile.exists()) {
-        final String content = await workingFile.readAsString();
-        final List<dynamic> list = jsonDecode(content);
-        _savedWorkingConfigs.clear();
-        for (final item in list) {
-          final srv = ReadyServer.fromMap(Map<String, dynamic>.from(item));
-          if (srv.rawUri.isNotEmpty &&
-              srv.ping >= 40 &&
-              !_savedWorkingConfigs.any((s) => s.rawUri == srv.rawUri)) {
-            _savedWorkingConfigs.add(srv);
+      final File stateFile = await _getLocalFile('nivexia_manager_v7.json');
+      if (await stateFile.exists()) {
+        final Map<String, dynamic> data = jsonDecode(await stateFile.readAsString());
+        _themeIndex = data['themeIndex'] ?? 0;
+        _selectedTab = data['selectedTab'] ?? 'auto';
+
+        if (data['customSubs'] is List) {
+          _customSubEntries.clear();
+          for (final item in data['customSubs']) {
+            _customSubEntries.add(
+              CustomSubEntry.fromMap(Map<String, dynamic>.from(item)),
+            );
           }
         }
-      }
 
-      final File customFile = await _getPermanentFile('nivexia_custom_subs_v6.json');
-      if (await customFile.exists()) {
-        final String content = await customFile.readAsString();
-        final List<dynamic> list = jsonDecode(content);
-        _customUserInputs.clear();
-        for (final item in list) {
-          final String s = item.toString().trim();
-          if (s.isNotEmpty && !_customUserInputs.contains(s)) {
-            _customUserInputs.add(s);
+        if (data['irancellServers'] is List) {
+          _irancellServers.clear();
+          for (final item in data['irancellServers']) {
+            _irancellServers.add(
+              ServerNode.fromMap(Map<String, dynamic>.from(item)),
+            );
           }
         }
+
+        if (data['mciServers'] is List) {
+          _mciServers.clear();
+          for (final item in data['mciServers']) {
+            _mciServers.add(
+              ServerNode.fromMap(Map<String, dynamic>.from(item)),
+            );
+          }
+        }
+
+        if (mounted) setState(() {});
       }
-
-      if (_savedWorkingConfigs.isNotEmpty && mounted) {
-        setState(() {
-          currentPing = _savedWorkingConfigs.first.ping;
-          statusMessage =
-              'Ready • ${_savedWorkingConfigs.length} saved config(s) ready';
-        });
-      }
     } catch (_) {}
   }
 
-  Future<void> _saveWorkingConfigsToDisk() async {
+  Future<void> _saveStateToDisk() async {
     try {
-      final File workingFile = await _getPermanentFile('nivexia_working_v6.json');
-      final List<Map<String, dynamic>> data =
-          _savedWorkingConfigs.take(15).map((s) => s.toMap()).toList();
-      await workingFile.writeAsString(jsonEncode(data));
+      final File stateFile = await _getLocalFile('nivexia_manager_v7.json');
+      final Map<String, dynamic> data = {
+        'themeIndex': _themeIndex,
+        'selectedTab': _selectedTab,
+        'customSubs': _customSubEntries.map((e) => e.toMap()).toList(),
+        'irancellServers': _irancellServers.map((e) => e.toMap()).toList(),
+        'mciServers': _mciServers.map((e) => e.toMap()).toList(),
+      };
+      await stateFile.writeAsString(jsonEncode(data));
     } catch (_) {}
   }
 
-  Future<void> _saveCustomInputsToDisk() async {
-    try {
-      final File customFile = await _getPermanentFile('nivexia_custom_subs_v6.json');
-      await customFile.writeAsString(jsonEncode(_customUserInputs));
-    } catch (_) {}
-  }
-
-  // ===========================================================================
-  // ۲. استخراج و آماده‌سازی کانفیگ‌ها
-  // ===========================================================================
-
-  bool _isInvalidOrLocalIp(String address) {
-    final String a = address.trim().toLowerCase();
-    if (a.isEmpty || a == 'localhost') return true;
-    if (a.startsWith('127.') ||
-        a.startsWith('10.') ||
-        a.startsWith('192.168.') ||
-        a.startsWith('0.')) {
-      return true;
-    }
-    return false;
-  }
-
-  String _decodeBase64Safe(String input) {
+  String _decodeBase64Flexible(String input) {
     try {
       String clean = input
           .trim()
@@ -341,13 +344,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  String _extractRemarkName(String uri, V2RayURL parser) {
+    try {
+      if (uri.contains('#')) {
+        final String rawFragment = uri.split('#').last.trim();
+        final String decoded = Uri.decodeComponent(rawFragment).trim();
+        if (decoded.isNotEmpty) return decoded;
+      }
+      final String parserRemark = parser.remark.trim();
+      if (parserRemark.isNotEmpty) return parserRemark;
+    } catch (_) {
+      if (uri.contains('#')) {
+        return uri.split('#').last.trim();
+      }
+    }
+    return '${uri.split('://').first.toUpperCase()} Server';
+  }
+
   String? _convertSsrToStandardSs(String ssrUri) {
     try {
       final String b64Part = ssrUri.substring(6).trim();
-      final String decoded = _decodeBase64Safe(b64Part);
+      final String decoded = _decodeBase64Flexible(b64Part);
       if (decoded.isEmpty) return null;
 
-      final String mainPart = decoded.split('/?').first;
+      final List<String> splitParams = decoded.split('/?');
+      final String mainPart = splitParams.first;
       final List<String> parts = mainPart.split(':');
       if (parts.length < 6) return null;
 
@@ -355,12 +376,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final String port = parts[1].trim();
       final String method = parts[3].trim();
       final String passB64 = parts[5].trim();
-      final String password = _decodeBase64Safe(passB64);
+      final String password = _decodeBase64Flexible(passB64);
+
+      String remark = 'SSR Server';
+      if (splitParams.length > 1) {
+        final Uri q = Uri.parse('http://localhost/?${splitParams[1]}');
+        if (q.queryParameters['remarks'] != null) {
+          final String r = _decodeBase64Flexible(q.queryParameters['remarks']!);
+          if (r.isNotEmpty) remark = r;
+        }
+      }
 
       if (host.isEmpty || password.isEmpty) return null;
       final String userInfoB64 =
           base64Url.encode(utf8.encode('$method:$password')).replaceAll('=', '');
-      return 'ss://$userInfoB64@$host:$port#SSR';
+      return 'ss://$userInfoB64@$host:$port#${Uri.encodeComponent(remark)}';
     } catch (_) {
       return null;
     }
@@ -370,64 +400,45 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     try {
       if (!ssUri.startsWith('ss://')) return ssUri;
       final String withoutPrefix = ssUri.substring(5);
-      final String mainPart = withoutPrefix.split('#').first;
+      final List<String> hashParts = withoutPrefix.split('#');
+      final String mainPart = hashParts.first;
+      final String remarkPart =
+          hashParts.length > 1 ? '#${hashParts.sublist(1).join('#')}' : '';
       if (!mainPart.contains('@')) {
-        final String decoded = _decodeBase64Safe(mainPart);
+        final String decoded = _decodeBase64Flexible(mainPart);
         if (decoded.contains('@')) {
           final List<String> atParts = decoded.split('@');
           final String encodedUser =
               base64Url.encode(utf8.encode(atParts.first)).replaceAll('=', '');
-          return 'ss://$encodedUser@${atParts.last}#SS';
+          return 'ss://$encodedUser@${atParts.last}$remarkPart';
         }
       }
     } catch (_) {}
     return ssUri;
   }
 
-  List<String> _extractConfigsFromText(String rawContent) {
-    String text = rawContent.trim();
-    if (text.isEmpty) return [];
-
-    if (!text.contains('://')) {
-      final String decoded = _decodeBase64Safe(text);
-      if (decoded.isNotEmpty) text = decoded;
-    }
-
-    final List<String> validLinks = [];
-    final Set<String> seen = {};
-
-    for (String line in text.split(RegExp(r'[\r\n]+'))) {
-      line = line.trim();
-      if (line.isEmpty) continue;
-
-      if (line.startsWith('ssr://')) {
-        final String? converted = _convertSsrToStandardSs(line);
-        if (converted != null) line = converted;
-      } else if (line.startsWith('ss://')) {
-        line = _normalizeSsUri(line);
-      }
-
-      if (line.startsWith('vless://') ||
-          line.startsWith('vmess://') ||
-          line.startsWith('ss://') ||
-          line.startsWith('trojan://')) {
-        if (line.contains('ech=')) continue;
-        if (seen.add(line)) {
-          validLinks.add(line);
-        }
-      }
-    }
-    return validLinks;
-  }
-
-  ReadyServer? _parseUriToServer(String uri) {
+  ServerNode? _parseConfigToNode(String rawUri, String group) {
     try {
+      String uri = rawUri.trim();
+      if (uri.startsWith('ssr://')) {
+        final String? conv = _convertSsrToStandardSs(uri);
+        if (conv == null) return null;
+        uri = conv;
+      } else if (uri.startsWith('ss://')) {
+        uri = _normalizeSsUri(uri);
+      }
+
+      if (!uri.startsWith('vless://') &&
+          !uri.startsWith('vmess://') &&
+          !uri.startsWith('ss://') &&
+          !uri.startsWith('trojan://')) {
+        return null;
+      }
+
       final V2RayURL parser = V2ray.parseFromURL(uri);
       final String host = parser.address.trim();
       final int port = parser.port;
-      if (_isInvalidOrLocalIp(host) || port <= 0 || port > 65535) {
-        return null;
-      }
+      if (host.isEmpty || port <= 0 || port > 65535) return null;
 
       if (parser.streamSetting['wsSettings'] is Map) {
         final Map ws = parser.streamSetting['wsSettings'];
@@ -436,9 +447,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           try {
             p = Uri.decodeComponent(p);
           } catch (_) {}
-          if (p.contains('?ed=')) {
-            p = p.split('?ed=').first;
-          }
           ws['path'] = p.isEmpty ? '/' : p;
         }
       }
@@ -450,9 +458,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             rl['spiderX'] = Uri.decodeComponent(rl['spiderX']);
           } catch (_) {}
         }
-        if ((rl['publicKey'] ?? '').toString().trim().isEmpty) {
-          return null;
-        }
       }
 
       if (parser.streamSetting['security'] == 'tls' &&
@@ -460,25 +465,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         parser.streamSetting['tlsSettings']['allowInsecure'] = true;
       }
 
-      final Map<String, dynamic> cfg =
+      final Map<String, dynamic> fullCfg =
           Map<String, dynamic>.from(jsonDecode(parser.getFullConfiguration()));
 
-      cfg['dns'] = {
+      fullCfg['dns'] = {
         "servers": ["1.1.1.1", "8.8.8.8"]
       };
 
       int httpPort = 10809;
-      if (cfg['inbounds'] is List) {
-        final List inbounds = cfg['inbounds'] as List;
-        bool foundHttp = false;
+      if (fullCfg['inbounds'] is List) {
+        final List inbounds = fullCfg['inbounds'] as List;
+        bool hasHttp = false;
         for (final ib in inbounds) {
           if (ib is Map && ib['protocol'] == 'http' && ib['port'] is int) {
             httpPort = ib['port'];
-            foundHttp = true;
+            hasHttp = true;
             break;
           }
         }
-        if (!foundHttp) {
+        if (!hasHttp) {
           inbounds.add({
             "tag": "http",
             "port": 10809,
@@ -493,208 +498,541 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         }
       }
 
+      final String remarkName = _extractRemarkName(uri, parser);
+      final String detectedCode = _guessCountryCodeFromName(remarkName);
+
       String proto = uri.split('://').first.toUpperCase();
       if (uri.contains('security=reality')) proto = 'REALITY';
 
-      return ReadyServer(
+      return ServerNode(
         rawUri: uri,
-        configJson: jsonEncode(cfg),
+        name: remarkName,
+        group: group,
+        configJson: jsonEncode(fullCfg),
         protocol: proto,
         address: host,
         port: port,
         localHttpPort: httpPort,
-        ping: -1,
+        countryCode: detectedCode,
+        countryName: detectedCode == 'UN' ? host : detectedCode,
       );
     } catch (_) {
       return null;
     }
   }
 
-  Future<String> _downloadUrlFast(String url, {int maxBytes = 300000}) async {
-    final http.Client client = http.Client();
+  Future<String> _fetchUrlText(String url) async {
     try {
-      final http.Request req = http.Request('GET', Uri.parse(url));
-      req.headers['User-Agent'] = 'v2rayNG/1.8.23';
+      final http.Response res = await http.get(
+        Uri.parse(url.trim()),
+        headers: {'User-Agent': 'v2rayNG/1.8.23'},
+      ).timeout(const Duration(seconds: 8));
 
-      final http.StreamedResponse response =
-          await client.send(req).timeout(const Duration(seconds: 6));
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        client.close();
-        return '';
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final String body = utf8.decode(res.bodyBytes, allowMalformed: true).trim();
+        if (!body.startsWith('<!DOCTYPE html>') && !body.contains('404: Not Found')) {
+          return body;
+        }
       }
+    } catch (_) {}
+    return '';
+  }
 
-      final List<int> bytes = [];
-      final Completer<String> completer = Completer<String>();
-      late StreamSubscription<List<int>> sub;
+  Future<List<String>> _extractAllConfigsFromRawOrSub(
+    String rawText, {
+    int depth = 0,
+  }) async {
+    String content = rawText.trim();
+    if (content.isEmpty) return [];
 
-      sub = response.stream.listen(
-        (chunk) {
-          bytes.addAll(chunk);
-          if (bytes.length >= maxBytes) {
-            sub.cancel();
-            client.close();
-            if (!completer.isCompleted) {
-              completer.complete(utf8.decode(bytes, allowMalformed: true));
+    if (!content.contains('://')) {
+      final String decoded = _decodeBase64Flexible(content);
+      if (decoded.isNotEmpty) {
+        content = decoded;
+      }
+    }
+
+    final List<String> finalUris = [];
+    final List<String> lines = content.split(RegExp(r'[\r\n]+'));
+
+    for (String line in lines) {
+      line = line.trim();
+      if (line.isEmpty || line.startsWith('#') || line.startsWith('//')) continue;
+
+      if ((line.startsWith('http://') || line.startsWith('https://')) && depth < 2) {
+        final String subBody = await _fetchUrlText(line);
+        if (subBody.isNotEmpty) {
+          final List<String> subConfigs =
+              await _extractAllConfigsFromRawOrSub(subBody, depth: depth + 1);
+          finalUris.addAll(subConfigs);
+        }
+      } else if (line.startsWith('vless://') ||
+          line.startsWith('vmess://') ||
+          line.startsWith('ss://') ||
+          line.startsWith('ssr://') ||
+          line.startsWith('trojan://')) {
+        finalUris.add(line);
+      } else {
+        final String decLine = _decodeBase64Flexible(line);
+        if (decLine.contains('://')) {
+          for (String subLine in decLine.split(RegExp(r'[\r\n]+'))) {
+            subLine = subLine.trim();
+            if (subLine.startsWith('vless://') ||
+                subLine.startsWith('vmess://') ||
+                subLine.startsWith('ss://') ||
+                subLine.startsWith('ssr://') ||
+                subLine.startsWith('trojan://')) {
+              finalUris.add(subLine);
             }
           }
-        },
-        onDone: () {
-          client.close();
-          if (!completer.isCompleted) {
-            completer.complete(utf8.decode(bytes, allowMalformed: true));
-          }
-        },
-        onError: (_) {
-          client.close();
-          if (!completer.isCompleted) completer.complete('');
-        },
-        cancelOnError: true,
-      );
+        }
+      }
+    }
 
-      return await completer.future.timeout(
-        const Duration(seconds: 6),
-        onTimeout: () {
-          sub.cancel();
-          client.close();
-          return bytes.isNotEmpty ? utf8.decode(bytes, allowMalformed: true) : '';
-        },
-      );
-    } catch (_) {
-      client.close();
-      return '';
+    return finalUris;
+  }
+
+  Future<void> _syncAllConfigsFromRemote({bool silent = false}) async {
+    if (isSyncingSubs) return;
+    if (mounted) {
+      setState(() {
+        isSyncingSubs = true;
+        if (!silent) statusMessage = 'Updating Irancell & MCI configs...';
+      });
+    }
+
+    try {
+      final Map<String, ServerNode> oldByUri = {};
+      for (final s in _irancellServers) {
+        oldByUri[s.rawUri] = s;
+      }
+      for (final s in _mciServers) {
+        oldByUri[s.rawUri] = s;
+      }
+
+      String irancellRaw = '';
+      for (final url in _githubIrancellUrls) {
+        final String txt = await _fetchUrlText(url);
+        if (txt.isNotEmpty) {
+          irancellRaw = txt;
+          break;
+        }
+      }
+
+      String mciRaw = '';
+      for (final url in _githubMciUrls) {
+        final String txt = await _fetchUrlText(url);
+        if (txt.isNotEmpty) {
+          mciRaw = txt;
+          break;
+        }
+      }
+
+      final List<String> newIrancellUris = [];
+      final List<String> newMciUris = [];
+
+      if (irancellRaw.isNotEmpty) {
+        newIrancellUris.addAll(await _extractAllConfigsFromRawOrSub(irancellRaw));
+      }
+      if (mciRaw.isNotEmpty) {
+        newMciUris.addAll(await _extractAllConfigsFromRawOrSub(mciRaw));
+      }
+
+      for (final entry in _customSubEntries) {
+        final List<String> extracted = await _extractAllConfigsFromRawOrSub(entry.input);
+        if (entry.group == 'mci') {
+          newMciUris.addAll(extracted);
+        } else {
+          newIrancellUris.addAll(extracted);
+        }
+      }
+
+      if (newIrancellUris.isNotEmpty) {
+        final List<ServerNode> parsedIrancell = [];
+        final Set<String> seen = {};
+        for (final u in newIrancellUris) {
+          if (!seen.add(u)) continue;
+          final ServerNode? node = _parseConfigToNode(u, 'irancell');
+          if (node != null) {
+            if (oldByUri.containsKey(u)) {
+              node.countryCode = oldByUri[u]!.countryCode;
+              node.countryName = oldByUri[u]!.countryName;
+              node.tcpPing = oldByUri[u]!.tcpPing;
+              node.realPing = oldByUri[u]!.realPing;
+            }
+            parsedIrancell.add(node);
+          }
+        }
+        _irancellServers
+          ..clear()
+          ..addAll(parsedIrancell);
+      }
+
+      if (newMciUris.isNotEmpty) {
+        final List<ServerNode> parsedMci = [];
+        final Set<String> seen = {};
+        for (final u in newMciUris) {
+          if (!seen.add(u)) continue;
+          final ServerNode? node = _parseConfigToNode(u, 'mci');
+          if (node != null) {
+            if (oldByUri.containsKey(u)) {
+              node.countryCode = oldByUri[u]!.countryCode;
+              node.countryName = oldByUri[u]!.countryName;
+              node.tcpPing = oldByUri[u]!.tcpPing;
+              node.realPing = oldByUri[u]!.realPing;
+            }
+            parsedMci.add(node);
+          }
+        }
+        _mciServers
+          ..clear()
+          ..addAll(parsedMci);
+      }
+
+      await _saveStateToDisk();
+      _resolveAllServerCountriesInBackground();
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() {
+        isSyncingSubs = false;
+        final int total = _irancellServers.length + _mciServers.length;
+        if (!isConnected) {
+          statusMessage = total > 0
+              ? 'Ready • $total servers loaded'
+              : 'No servers yet • Add in GitHub or tap +';
+        }
+      });
     }
   }
 
-  // ===========================================================================
-  // ۳. اسکن و تست واقعی کانفیگ‌ها و توقف کامل به محض اتصال
-  // ===========================================================================
+  String _guessCountryCodeFromName(String text) {
+    final String upper = text.toUpperCase();
+    final Map<String, String> keywords = {
+      'TR': 'TR',
+      'TURKEY': 'TR',
+      'DE': 'DE',
+      'GERMANY': 'DE',
+      'NL': 'NL',
+      'NETHERLANDS': 'NL',
+      'US': 'US',
+      'USA': 'US',
+      'AMERICA': 'US',
+      'GB': 'GB',
+      'UK': 'GB',
+      'ENGLAND': 'GB',
+      'FR': 'FR',
+      'FRANCE': 'FR',
+      'FI': 'FI',
+      'FINLAND': 'FI',
+      'SE': 'SE',
+      'SWEDEN': 'SE',
+      'AE': 'AE',
+      'UAE': 'AE',
+      'DUBAI': 'AE',
+      'CA': 'CA',
+      'CANADA': 'CA',
+      'SG': 'SG',
+      'SINGAPORE': 'SG',
+      'JP': 'JP',
+      'JAPAN': 'JP',
+      'RU': 'RU',
+      'RUSSIA': 'RU',
+      'PL': 'PL',
+      'POLAND': 'PL',
+      'AT': 'AT',
+      'AUSTRIA': 'AT',
+      'CH': 'CH',
+      'SWISS': 'CH',
+    };
 
-  Future<int> _checkSocketPing(String host, int port) async {
-    Socket? s;
+    for (final entry in keywords.entries) {
+      if (upper.contains(entry.key)) {
+        return entry.value;
+      }
+    }
+    return 'UN';
+  }
+
+  Future<void> _resolveSingleServerCountry(ServerNode srv) async {
+    final String host = srv.address.trim();
+    if (host.isEmpty) return;
+
+    if (_geoCache.containsKey(host)) {
+      srv.countryCode = _geoCache[host]!['code'] ?? srv.countryCode;
+      srv.countryName = _geoCache[host]!['name'] ?? srv.countryName;
+      return;
+    }
+
+    String queryTarget = host;
+    try {
+      final List<InternetAddress> addrs = await InternetAddress.lookup(host)
+          .timeout(const Duration(seconds: 3));
+      if (addrs.isNotEmpty) {
+        queryTarget = addrs.first.address;
+      }
+    } catch (_) {}
+
+    try {
+      final http.Response res = await http
+          .get(Uri.parse('http://ip-api.com/json/$queryTarget?fields=status,country,countryCode'))
+          .timeout(const Duration(seconds: 4));
+
+      if (res.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(res.body);
+        if (data['status'] == 'success') {
+          final String cc = (data['countryCode'] ?? 'UN').toString().toUpperCase();
+          final String cn = (data['country'] ?? cc).toString();
+          _geoCache[host] = {'code': cc, 'name': cn};
+          srv.countryCode = cc;
+          srv.countryName = cn;
+          if (mounted) setState(() {});
+          return;
+        }
+      }
+    } catch (_) {}
+
+    try {
+      final http.Response res2 = await http
+          .get(Uri.parse('https://ipwho.is/$queryTarget'))
+          .timeout(const Duration(seconds: 4));
+      if (res2.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(res2.body);
+        if (data['success'] == true) {
+          final String cc = (data['country_code'] ?? 'UN').toString().toUpperCase();
+          final String cn = (data['country'] ?? cc).toString();
+          _geoCache[host] = {'code': cc, 'name': cn};
+          srv.countryCode = cc;
+          srv.countryName = cn;
+          if (mounted) setState(() {});
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _resolveAllServerCountriesInBackground() async {
+    final List<ServerNode> all = [..._irancellServers, ..._mciServers];
+    for (final srv in all) {
+      await _resolveSingleServerCountry(srv);
+    }
+    await _saveStateToDisk();
+  }
+
+  String _countryCodeToEmoji(String code) {
+    final String clean = code.trim().toUpperCase();
+    if (clean.length != 2 || clean == 'UN') return '🌐';
+    final int first = clean.codeUnitAt(0) - 0x41 + 0x1F1E6;
+    final int second = clean.codeUnitAt(1) - 0x41 + 0x1F1E6;
+    return String.fromCharCodes([first, second]);
+  }
+
+  Widget _buildHighQualityFlag(String countryCode, {double size = 28}) {
+    final String cc = countryCode.trim().toLowerCase();
+    if (cc.length != 2 || cc == 'un') {
+      return Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: _theme.surface,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Text('🌐', style: TextStyle(fontSize: size * 0.58)),
+      );
+    }
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white24, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.35),
+            blurRadius: 4,
+          ),
+        ],
+      ),
+      child: ClipOval(
+        child: Image.network(
+          'https://flagcdn.com/w160/$cc.png',
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return Container(
+              color: _theme.surface,
+              alignment: Alignment.center,
+              child: Text(
+                _countryCodeToEmoji(cc),
+                style: TextStyle(fontSize: size * 0.6),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<int> _measureTcpPing(String host, int port) async {
+    Socket? socket;
     try {
       final Stopwatch sw = Stopwatch()..start();
-      s = await Socket.connect(
+      socket = await Socket.connect(
         host,
         port,
-        timeout: const Duration(milliseconds: 800),
+        timeout: const Duration(milliseconds: 1200),
       );
       sw.stop();
-      await s.close();
+      await socket.close();
       return sw.elapsedMilliseconds;
     } catch (_) {
-      s?.destroy();
+      socket?.destroy();
       return -1;
     }
   }
 
-  Future<int> _verifyConfigWithXrayCore(ReadyServer candidate) async {
-    final int tcpMs = await _checkSocketPing(candidate.address, candidate.port);
-    if (tcpMs < 25 || tcpMs > 1000) return -1;
+  Future<int> _measureRealCorePing(ServerNode srv) async {
+    final int tcp = await _measureTcpPing(srv.address, srv.port);
+    if (tcp <= 0) return -1;
+    srv.tcpPing = tcp;
 
     try {
-      final int coreDelay = await v2ray
+      final int delay = await v2ray
           .getServerDelay(
-            config: candidate.configJson,
+            config: srv.configJson,
             url: 'http://cp.cloudflare.com/generate_204',
           )
-          .timeout(const Duration(milliseconds: 2800), onTimeout: () => -1);
+          .timeout(const Duration(milliseconds: 3000), onTimeout: () => -1);
 
-      if (coreDelay >= 40 && coreDelay < 3000) {
-        return coreDelay;
+      if (delay > 0 && delay < 3500) {
+        return delay;
       }
     } catch (_) {}
 
-    try {
-      final int googleDelay = await v2ray
-          .getServerDelay(
-            config: candidate.configJson,
-            url: 'http://www.gstatic.com/generate_204',
-          )
-          .timeout(const Duration(milliseconds: 2500), onTimeout: () => -1);
-
-      if (googleDelay >= 40 && googleDelay < 3000) {
-        return googleDelay;
-      }
-    } catch (_) {}
-
-    return -1;
+    return tcp;
   }
 
-  /// تست واقعی دانلود از طریق پورت لوکال هسته Xray بعد از روشن شدن تانل
-  Future<int> _verifyRealDownloadThroughLocalProxy(int localHttpPort) async {
-    final List<String> testUrls = [
-      'http://cp.cloudflare.com/generate_204',
-      'http://www.gstatic.com/generate_204',
-    ];
+  List<ServerNode> _getCurrentTabServers() {
+    if (_selectedTab == 'irancell') return _irancellServers;
+    if (_selectedTab == 'mci') return _mciServers;
+    return [..._irancellServers, ..._mciServers];
+  }
 
-    for (final String url in testUrls) {
-      HttpClient? proxyClient;
-      try {
-        proxyClient = HttpClient();
-        proxyClient.connectionTimeout = const Duration(milliseconds: 2800);
-        proxyClient.findProxy = (uri) => "PROXY 127.0.0.1:$localHttpPort";
+  Future<void> _runTcpPingForCurrentTab() async {
+    if (isTestingTcp || isTestingReal) return;
+    final List<ServerNode> list = _getCurrentTabServers();
+    if (list.isEmpty) return;
 
-        final Stopwatch sw = Stopwatch()..start();
-        final HttpClientRequest req = await proxyClient
-            .getUrl(Uri.parse(url))
-            .timeout(const Duration(milliseconds: 2800));
-        req.headers.set('User-Agent', 'Mozilla/5.0');
+    setState(() {
+      isTestingTcp = true;
+      statusMessage = 'Running TCP Ping test...';
+    });
 
-        final HttpClientResponse res =
-            await req.close().timeout(const Duration(milliseconds: 2800));
-        await res.drain().timeout(const Duration(milliseconds: 1500));
-        sw.stop();
-        proxyClient.close(force: true);
+    await Future.wait(list.map((srv) async {
+      final int ms = await _measureTcpPing(srv.address, srv.port);
+      srv.tcpPing = ms;
+      if (mounted) setState(() {});
+    }));
 
-        if ((res.statusCode == 204 || res.statusCode == 200) &&
-            sw.elapsedMilliseconds >= 40) {
-          return sw.elapsedMilliseconds;
-        }
-      } catch (_) {
-        proxyClient?.close(force: true);
-      }
+    await _saveStateToDisk();
+    if (mounted) {
+      setState(() {
+        isTestingTcp = false;
+        statusMessage = 'TCP Ping test completed';
+      });
+    }
+  }
+
+  Future<void> _runRealTestForCurrentTab() async {
+    if (isTestingReal || isTestingTcp) return;
+    final List<ServerNode> list = _getCurrentTabServers();
+    if (list.isEmpty) return;
+
+    setState(() {
+      isTestingReal = true;
+      statusMessage = 'Running Real Config test...';
+    });
+
+    for (final srv in list) {
+      if (!mounted) break;
+      final int realMs = await _measureRealCorePing(srv);
+      srv.realPing = realMs;
+      setState(() {});
     }
 
-    try {
-      final int coreDelay = await v2ray
-          .getConnectedServerDelay()
-          .timeout(const Duration(milliseconds: 2800), onTimeout: () => -1);
-      if (coreDelay >= 45 && coreDelay < 3500) {
-        return coreDelay;
-      }
-    } catch (_) {}
-
-    return -1;
+    await _saveStateToDisk();
+    if (mounted) {
+      setState(() {
+        isTestingReal = false;
+        statusMessage = 'Real Config test completed';
+      });
+    }
   }
 
-  /// تست و اتصال واقعی؛ اگر سرور وصل شد و دانلود واقعی داشت، true برمی‌گرداند و اسکن متوقف می‌شود
-  Future<bool> _tryStartAndVerifyServer(ReadyServer srv) async {
+  Future<void> _refreshSingleServerPing(ServerNode srv) async {
+    if (isRefreshingPing) return;
+    setState(() => isRefreshingPing = true);
+
     try {
+      int p = -1;
+      if (isConnected && _connectedServer?.rawUri == srv.rawUri) {
+        try {
+          p = await v2ray
+              .getConnectedServerDelay()
+              .timeout(const Duration(milliseconds: 2500), onTimeout: () => -1);
+        } catch (_) {}
+      }
+      if (p <= 0) {
+        p = await _measureRealCorePing(srv);
+      }
+
       if (mounted) {
         setState(() {
-          rocketScanDetail =
-              'Testing download on ${srv.protocol} (${srv.ping} ms)...';
+          if (p > 0) {
+            srv.realPing = p;
+            srv.tcpPing = p;
+            if (_connectedServer?.rawUri == srv.rawUri ||
+                _selectedServer?.rawUri == srv.rawUri) {
+              currentPing = p;
+            }
+          }
         });
       }
+      await _resolveSingleServerCountry(srv);
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() => isRefreshingPing = false);
+    }
+  }
+
+  Future<bool> _startVpnWithNode(ServerNode node) async {
+    try {
+      try {
+        await v2ray.stopV2Ray();
+      } catch (_) {}
+      await Future.delayed(const Duration(milliseconds: 300));
 
       _nativeVpnRunning = false;
       await v2ray.startV2Ray(
-        remark: "Nivexia VPN (${srv.protocol})",
-        config: srv.configJson,
+        remark: node.name,
+        config: node.configJson,
         blockedApps: null,
         bypassSubnets: null,
         proxyOnly: false,
       );
 
-      int waitedMs = 0;
-      while (!_nativeVpnRunning && waitedMs < 3200) {
+      int waited = 0;
+      while (!_nativeVpnRunning && waited < 3200) {
         if (_userCancelled) {
           await v2ray.stopV2Ray();
           return false;
         }
         await Future.delayed(const Duration(milliseconds: 150));
-        waitedMs += 150;
+        waited += 150;
       }
 
       if (!_nativeVpnRunning) {
@@ -702,35 +1040,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         return false;
       }
 
-      await Future.delayed(const Duration(milliseconds: 450));
-      if (_userCancelled) {
-        await v2ray.stopV2Ray();
-        return false;
-      }
+      _connectedServer = node;
+      _selectedServer = node;
 
-      final int realDownloadPing =
-          await _verifyRealDownloadThroughLocalProxy(srv.localHttpPort);
-
-      if (realDownloadPing < 40 || !_nativeVpnRunning) {
-        await v2ray.stopV2Ray();
-        await Future.delayed(const Duration(milliseconds: 250));
-        return false;
-      }
-
-      srv.ping = realDownloadPing;
-      _savedWorkingConfigs.removeWhere((s) => s.rawUri == srv.rawUri);
-      _savedWorkingConfigs.insert(0, srv);
-      await _saveWorkingConfigsToDisk();
-
-      _activeServer = srv;
-      _rocketController.stop();
+      _resolveSingleServerCountry(node);
 
       if (mounted) {
         setState(() {
           isConnected = true;
           isConnecting = false;
-          currentPing = realDownloadPing;
-          statusMessage = 'Connected • ${srv.protocol} Active';
+          currentPing = node.displayPing;
+          statusMessage = 'Connected • ${node.name}';
         });
       }
       return true;
@@ -742,226 +1062,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  /// اسکن یک لیست از کانفیگ‌ها و اتصال فوری به اولین کانفیگ سالم (و توقف کامل ادامه اسکن)
-  Future<bool> _scanAndConnectFirstWorking(
-    List<String> rawUris,
-    String sourceLabel,
-  ) async {
-    final List<ReadyServer> parsedNodes = [];
-    for (final uri in rawUris) {
-      final ReadyServer? node = _parseUriToServer(uri);
-      if (node != null) {
-        parsedNodes.add(node);
-      }
-    }
-
-    if (parsedNodes.isEmpty) return false;
-
-    const int batchSize = 30;
-    for (int offset = 0; offset < parsedNodes.length; offset += batchSize) {
-      if (_userCancelled) return false;
-
-      final int end = min(offset + batchSize, parsedNodes.length);
-      final List<ReadyServer> batch = parsedNodes.sublist(offset, end);
-
-      if (mounted) {
-        setState(() {
-          rocketScanDetail =
-              'Scanning $sourceLabel (${offset + 1}-$end of ${parsedNodes.length})...';
-        });
-      }
-
-      final List<ReadyServer> openPortNodes = [];
-      await Future.wait(batch.map((node) async {
-        final int tcp = await _checkSocketPing(node.address, node.port);
-        if (tcp >= 25 && tcp < 900) {
-          node.ping = tcp;
-          openPortNodes.add(node);
-        }
-      }));
-
-      if (openPortNodes.isEmpty) continue;
-
-      openPortNodes.sort((a, b) {
-        final int aIsReality = a.protocol == 'REALITY' ? 1 : 0;
-        final int bIsReality = b.protocol == 'REALITY' ? 1 : 0;
-        if (aIsReality != bIsReality) return aIsReality.compareTo(bIsReality);
-        return a.ping.compareTo(b.ping);
-      });
-
-      for (int i = 0; i < openPortNodes.length; i++) {
-        if (_userCancelled) return false;
-        final ReadyServer candidate = openPortNodes[i];
-
-        if (mounted) {
-          setState(() {
-            rocketScanDetail =
-                'Verifying $sourceLabel (${i + 1}/${openPortNodes.length})...';
-          });
-        }
-
-        final int verifiedDelay = await _verifyConfigWithXrayCore(candidate);
-        if (verifiedDelay >= 40 && verifiedDelay < 3000) {
-          candidate.ping = verifiedDelay;
-          final bool connected = await _tryStartAndVerifyServer(candidate);
-          if (connected) {
-            return true; // متصل شد! توقف کامل اسکن!
-          }
-        }
-      }
-    }
-
-    return false;
-  }
-
-  Future<List<String>> _fetchAdminAndCustomConfigs() async {
-    final List<String> allAdminConfigs = [];
-    final List<String> subUrlsToFetch = [];
-
-    for (final item in _customUserInputs) {
-      if (item.startsWith('http://') || item.startsWith('https://')) {
-        subUrlsToFetch.add(item);
-      } else {
-        allAdminConfigs.addAll(_extractConfigsFromText(item));
-      }
-    }
-
-    for (final adminUrl in _remoteAdminControlUrls) {
-      if (_userCancelled) break;
-      final String body = await _downloadUrlFast(adminUrl, maxBytes: 150000);
-      if (body.isNotEmpty && !body.contains('404: Not Found')) {
-        for (String line in body.split(RegExp(r'[\r\n]+'))) {
-          line = line.trim();
-          if (line.isEmpty || line.startsWith('#')) continue;
-          if (line.startsWith('http://') || line.startsWith('https://')) {
-            if (!subUrlsToFetch.contains(line)) subUrlsToFetch.add(line);
-          } else {
-            allAdminConfigs.addAll(_extractConfigsFromText(line));
-          }
-        }
-        break;
-      }
-    }
-
-    for (final subUrl in subUrlsToFetch) {
-      if (_userCancelled) break;
-      final String subBody = await _downloadUrlFast(subUrl, maxBytes: 250000);
-      if (subBody.isNotEmpty) {
-        allAdminConfigs.addAll(_extractConfigsFromText(subBody));
-      }
-    }
-
-    return allAdminConfigs;
-  }
-
-  Future<bool> _launchPriorityScanAndConnect() async {
-    try {
-      await v2ray.stopV2Ray();
-    } catch (_) {}
-    await Future.delayed(const Duration(milliseconds: 400));
-
-    // ۱. اولویت اول: کانفیگ‌های سالم ذخیره‌شده از دفعات قبلی
-    if (_savedWorkingConfigs.isNotEmpty && !_userCancelled) {
-      final List<ReadyServer> savedCopy = List<ReadyServer>.from(_savedWorkingConfigs);
-      for (int i = 0; i < savedCopy.length; i++) {
-        if (_userCancelled) return false;
-        final ReadyServer savedSrv = savedCopy[i];
-
-        if (mounted) {
-          setState(() {
-            rocketScanDetail =
-                'Checking saved working config (${i + 1}/${savedCopy.length})...';
-          });
-        }
-
-        final int delay = await _verifyConfigWithXrayCore(savedSrv);
-        if (delay >= 40 && delay < 3000) {
-          savedSrv.ping = delay;
-          final bool ok = await _tryStartAndVerifyServer(savedSrv);
-          if (ok) return true;
-        }
-        _savedWorkingConfigs.removeWhere((s) => s.rawUri == savedSrv.rawUri);
-        await _saveWorkingConfigsToDisk();
-      }
-    }
-
-    // ۲. اولویت دوم: ساب‌لینک‌ها و کانفیگ‌های ادمین (GitHub admin_subs.txt + لیست دستی)
-    if (!_userCancelled) {
-      if (mounted) {
-        setState(() {
-          rocketScanDetail = 'Checking Admin priority subs & configs...';
-        });
-      }
-      final List<String> adminConfigs = await _fetchAdminAndCustomConfigs();
-      if (adminConfigs.isNotEmpty && !_userCancelled) {
-        final bool ok = await _scanAndConnectFirstWorking(
-          adminConfigs,
-          'Admin Priority',
-        );
-        if (ok) return true;
-      }
-    }
-
-    // ۳. اولویت سوم: ساب‌لینک جدید Hiddify Mahsa (حدود ۳۰-۴۰ کانفیگ سریع)
-    if (!_userCancelled) {
-      if (mounted) {
-        setState(() {
-          rocketScanDetail = 'Fetching Hiddify Mahsa priority sub...';
-        });
-      }
-      List<String> mahsaConfigs = [];
-      for (final url in _priorityMahsaSubUrls) {
-        if (_userCancelled) break;
-        final String body = await _downloadUrlFast(url, maxBytes: 250000);
-        if (body.isNotEmpty) {
-          mahsaConfigs = _extractConfigsFromText(body);
-          if (mahsaConfigs.isNotEmpty) break;
-        }
-      }
-
-      if (mahsaConfigs.isNotEmpty && !_userCancelled) {
-        final bool ok = await _scanAndConnectFirstWorking(
-          mahsaConfigs,
-          'Hiddify Mahsa',
-        );
-        if (ok) return true;
-      }
-    }
-
-    // ۴. اولویت چهارم: ساب‌لینک‌های پشتیبان Epodonios
-    for (final epUrl in _fallbackEpodoniosUrls) {
-      if (_userCancelled) break;
-      final String protoLabel =
-          epUrl.split('/').last.replaceAll('.txt', '').toUpperCase();
-      if (mounted) {
-        setState(() {
-          rocketScanDetail = 'Loading Epodonios $protoLabel backup sub...';
-        });
-      }
-
-      final String body = await _downloadUrlFast(epUrl, maxBytes: 350000);
-      if (body.isEmpty) continue;
-
-      final List<String> epConfigs = _extractConfigsFromText(body);
-      if (epConfigs.isEmpty) continue;
-
-      final bool ok = await _scanAndConnectFirstWorking(
-        epConfigs.take(250).toList(),
-        'Epodonios $protoLabel',
-      );
-      if (ok) return true;
-    }
-
-    return false;
-  }
-
-  Future<void> _onConnectButtonPressed() async {
-    _failoverCountdownTimer?.cancel();
-    _failoverCountdownTimer = null;
-
-    if (isConnected || isConnecting) {
+  Future<void> _onConnectButtonPressed({ServerNode? specificServer}) async {
+    if ((isConnected || isConnecting) && specificServer == null) {
       _userCancelled = true;
-      _rocketController.stop();
       try {
         await v2ray.stopV2Ray();
       } catch (_) {}
@@ -969,10 +1072,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         isConnected = false;
         isConnecting = false;
         _nativeVpnRunning = false;
-        _isAutoSwitching = false;
-        statusMessage = _savedWorkingConfigs.isNotEmpty
-            ? 'Ready • ${_savedWorkingConfigs.length} saved config(s) ready'
-            : 'Tap Connect to launch';
+        statusMessage = 'Disconnected';
       });
       return;
     }
@@ -985,181 +1085,95 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     setState(() {
       isConnecting = true;
+      isConnected = false;
       _userCancelled = false;
-      rocketScanDetail = 'Igniting engines...';
+      statusMessage = 'Testing configs & connecting...';
     });
-    _rocketController.repeat();
 
-    final bool connectedOk = await _launchPriorityScanAndConnect();
-    if (connectedOk) return;
+    if (_irancellServers.isEmpty && _mciServers.isEmpty) {
+      await _syncAllConfigsFromRemote(silent: true);
+    }
 
-    _rocketController.stop();
+    if (specificServer != null) {
+      final int ping = await _measureRealCorePing(specificServer);
+      if (ping > 0) specificServer.realPing = ping;
+      final bool ok = await _startVpnWithNode(specificServer);
+      if (!ok && mounted) {
+        setState(() {
+          isConnecting = false;
+          statusMessage = 'Failed to connect to ${specificServer.name}';
+        });
+      }
+      return;
+    }
+
+    final List<ServerNode> candidates = _selectedTab == 'auto'
+        ? [..._irancellServers, ..._mciServers]
+        : (_selectedServer != null ? [_selectedServer!] : _getCurrentTabServers());
+
+    if (candidates.isEmpty) {
+      setState(() {
+        isConnecting = false;
+        statusMessage = 'No configs found! Add configs via + or GitHub.';
+      });
+      return;
+    }
+
+    final List<ServerNode> alive = [];
+    await Future.wait(candidates.map((srv) async {
+      final int tcp = await _measureTcpPing(srv.address, srv.port);
+      if (tcp > 0) {
+        srv.tcpPing = tcp;
+        alive.add(srv);
+      }
+    }));
+
+    if (alive.isEmpty || _userCancelled) {
+      if (mounted) {
+        setState(() {
+          isConnecting = false;
+          statusMessage = 'No server responded to ping test';
+        });
+      }
+      return;
+    }
+
+    alive.sort((a, b) => a.tcpPing.compareTo(b.tcpPing));
+
+    for (final candidate in alive) {
+      if (_userCancelled) break;
+      if (mounted) {
+        setState(() {
+          statusMessage = 'Testing ${candidate.name} (${candidate.tcpPing} ms)...';
+        });
+      }
+
+      final int realMs = await _measureRealCorePing(candidate);
+      if (realMs > 0) {
+        candidate.realPing = realMs;
+        final bool connected = await _startVpnWithNode(candidate);
+        if (connected) return;
+      }
+    }
+
     if (mounted && !_userCancelled) {
       setState(() {
         isConnecting = false;
         isConnected = false;
-        statusMessage = 'No active server responded • Tap to retry';
+        statusMessage = 'Could not establish connection';
       });
     }
   }
 
-  // ===========================================================================
-  // ۴. رفرش کلیکی پینگ + تشخیص قطعی کانفیگ یا اینترنت (۳۰ ثانیه)
-  // ===========================================================================
-
-  Future<void> _refreshPingOnTap() async {
-    if (isRefreshingPing || isConnecting) return;
-    setState(() => isRefreshingPing = true);
-
-    try {
-      if (isConnected && _activeServer != null) {
-        final int realPing =
-            await _verifyRealDownloadThroughLocalProxy(_activeServer!.localHttpPort);
-        if (mounted) {
-          setState(() => currentPing = realPing >= 40 ? realPing : -1);
-        }
-      } else if (_savedWorkingConfigs.isNotEmpty) {
-        final int p = await _checkSocketPing(
-          _savedWorkingConfigs.first.address,
-          _savedWorkingConfigs.first.port,
-        );
-        if (mounted && p > 0) {
-          setState(() {
-            _savedWorkingConfigs.first.ping = p;
-            currentPing = p;
-          });
-        }
-      }
-    } catch (_) {}
-
-    if (mounted) {
-      setState(() => isRefreshingPing = false);
-    }
-  }
-
-  Future<bool> _isUserBaseInternetConnected() async {
-    for (final ip in ['10.202.10.10', '178.22.122.100', '1.1.1.1', '8.8.8.8']) {
-      Socket? s;
-      try {
-        s = await Socket.connect(ip, 53, timeout: const Duration(milliseconds: 1200));
-        await s.close();
-        return true;
-      } catch (_) {
-        s?.destroy();
-      }
-    }
-    return false;
-  }
-
-  Future<void> _checkConnectionAndHandleFailover() async {
-    if (!isConnected || _activeServer == null || _isAutoSwitching) return;
-
-    final int livePing =
-        await _verifyRealDownloadThroughLocalProxy(_activeServer!.localHttpPort);
-
-    if (livePing >= 40 && livePing < 3500) {
-      _failoverCountdownTimer?.cancel();
-      _failoverCountdownTimer = null;
-      _configFailSeconds = 0;
-      _internetIsDown = false;
-      if (mounted) {
-        setState(() {
-          currentPing = livePing;
-          statusMessage = 'Connected • ${_activeServer!.protocol} Active';
-        });
-      }
-      return;
-    }
-
-    final bool hasNet = await _isUserBaseInternetConnected();
-    if (!hasNet) {
-      _failoverCountdownTimer?.cancel();
-      _failoverCountdownTimer = null;
-      _configFailSeconds = 0;
-      if (mounted) {
-        setState(() {
-          _internetIsDown = true;
-          currentPing = -1;
-          statusMessage = 'No Internet • Waiting for network...';
-        });
-      }
-      return;
-    }
-
-    _internetIsDown = false;
-    if (_failoverCountdownTimer == null) {
-      _configFailSeconds = 30;
-      if (mounted) {
-        setState(() {
-          currentPing = -1;
-          statusMessage = 'Config dropped • Auto-switching in $_configFailSeconds s...';
-        });
-      }
-
-      _failoverCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-        if (!isConnected || !mounted) {
-          timer.cancel();
-          _failoverCountdownTimer = null;
-          return;
-        }
-
-        _configFailSeconds--;
-        if (_configFailSeconds > 0) {
-          setState(() {
-            statusMessage = 'Config dropped • Auto-switching in $_configFailSeconds s...';
-          });
-        } else {
-          timer.cancel();
-          _failoverCountdownTimer = null;
-          await _autoReconnectOnDrop();
-        }
-      });
-    }
-  }
-
-  Future<void> _autoReconnectOnDrop() async {
-    if (_isAutoSwitching) return;
-    _isAutoSwitching = true;
-
-    if (_activeServer != null) {
-      _savedWorkingConfigs.removeWhere((s) => s.rawUri == _activeServer!.rawUri);
-      await _saveWorkingConfigsToDisk();
-    }
-
-    if (mounted) {
-      setState(() {
-        isConnected = false;
-        isConnecting = true;
-        rocketScanDetail = 'Re-launching rocket for new server...';
-      });
-    }
-    _rocketController.repeat();
-
-    final bool ok = await _launchPriorityScanAndConnect();
-    if (!ok) {
-      _rocketController.stop();
-      if (mounted) {
-        setState(() {
-          isConnecting = false;
-          isConnected = false;
-          statusMessage = 'Connection lost • Tap Connect to retry';
-        });
-      }
-    }
-
-    _isAutoSwitching = false;
-  }
-
-  // ===========================================================================
-  // ۵. پنجره مدیریت ساب‌لینک‌ها و کانفیگ‌های اولویت‌دار
-  // ===========================================================================
-
-  void _openCustomSubManagerDialog() {
+  void _openAddCustomSubSheet() {
     final TextEditingController inputCtrl = TextEditingController();
+    String targetGroup = _selectedTab == 'mci' ? 'mci' : 'irancell';
+    bool isAdding = false;
+    String feedbackText = '';
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF11151F),
+      backgroundColor: _theme.card,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -1181,12 +1195,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'PRIORITY SUBS & CONFIGS',
+                      Text(
+                        'ADD SUBSCRIPTION / CONFIGS',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w900,
-                          color: Color(0xFF00F5D4),
+                          color: _theme.primary,
                           letterSpacing: 1.1,
                         ),
                       ),
@@ -1197,100 +1211,135 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ],
                   ),
                   const Text(
-                    'Add any Subscription URL (https://...) or direct config (vless://...). These are scanned with #1 Priority!',
-                    style: TextStyle(fontSize: 11, color: Colors.white54),
+                    'Paste a Subscription URL (https://...) or configs (vless://, vmess://, ss://, trojan://) and select its operator group:',
+                    style: TextStyle(fontSize: 11.5, color: Colors.white60),
                   ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Expanded(
-                        child: TextField(
-                          controller: inputCtrl,
-                          style: const TextStyle(fontSize: 12),
-                          decoration: InputDecoration(
-                            hintText: 'https://sub-link... or vless://...',
-                            filled: true,
-                            fillColor: const Color(0xFF090B10),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
+                      const Text(
+                        'Target Group: ',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(width: 8),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF00F5D4),
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onPressed: () async {
-                          final String val = inputCtrl.text.trim();
-                          if (val.isEmpty) return;
-                          if (!_customUserInputs.contains(val)) {
-                            _customUserInputs.insert(0, val);
-                            await _saveCustomInputsToDisk();
-                          }
-                          inputCtrl.clear();
-                          setModalState(() {});
-                          setState(() {});
-                        },
-                        child: const Text(
-                          'Add',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
+                      ChoiceChip(
+                        label: const Text('Irancell'),
+                        selected: targetGroup == 'irancell',
+                        selectedColor: _theme.primary.withOpacity(0.25),
+                        onSelected: (_) => setModalState(() => targetGroup = 'irancell'),
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text('MCI'),
+                        selected: targetGroup == 'mci',
+                        selectedColor: _theme.primary.withOpacity(0.25),
+                        onSelected: (_) => setModalState(() => targetGroup = 'mci'),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  if (_customUserInputs.isNotEmpty)
-                    SizedBox(
-                      height: 140,
-                      child: ListView.builder(
-                        itemCount: _customUserInputs.length,
-                        itemBuilder: (context, idx) {
-                          final item = _customUserInputs[idx];
-                          return ListTile(
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                            leading: const Icon(
-                              Icons.star_rounded,
-                              color: Color(0xFF00F5D4),
-                              size: 18,
-                            ),
-                            title: Text(
-                              item,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(
-                                Icons.delete_outline,
-                                color: Colors.redAccent,
-                                size: 18,
-                              ),
-                              onPressed: () async {
-                                _customUserInputs.removeAt(idx);
-                                await _saveCustomInputsToDisk();
-                                setModalState(() {});
-                                setState(() {});
-                              },
-                            ),
-                          );
-                        },
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: inputCtrl,
+                    maxLines: 3,
+                    minLines: 1,
+                    style: const TextStyle(fontSize: 12),
+                    decoration: InputDecoration(
+                      hintText: 'https://sub-link... or vless://...#Name',
+                      filled: true,
+                      fillColor: _theme.bg,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 12,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  if (feedbackText.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: Text(
+                        feedbackText,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _theme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _theme.primary,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: isAdding
+                          ? null
+                          : () async {
+                              final String raw = inputCtrl.text.trim();
+                              if (raw.isEmpty) return;
+
+                              setModalState(() {
+                                isAdding = true;
+                                feedbackText = 'Reading & extracting configs...';
+                              });
+
+                              final List<String> extractedUris =
+                                  await _extractAllConfigsFromRawOrSub(raw);
+
+                              int addedCount = 0;
+                              final List<ServerNode> targetList =
+                                  targetGroup == 'mci' ? _mciServers : _irancellServers;
+
+                              for (final u in extractedUris) {
+                                if (targetList.any((s) => s.rawUri == u)) continue;
+                                final ServerNode? node = _parseConfigToNode(u, targetGroup);
+                                if (node != null) {
+                                  targetList.add(node);
+                                  addedCount++;
+                                }
+                              }
+
+                              if (extractedUris.isNotEmpty) {
+                                _customSubEntries.add(
+                                  CustomSubEntry(input: raw, group: targetGroup),
+                                );
+                                await _saveStateToDisk();
+                                _resolveAllServerCountriesInBackground();
+                              }
+
+                              setModalState(() {
+                                isAdding = false;
+                                feedbackText = extractedUris.isEmpty
+                                    ? 'No valid configs found in input!'
+                                    : 'Added $addedCount config(s) to ${targetGroup.toUpperCase()}!';
+                              });
+                              inputCtrl.clear();
+                              if (mounted) setState(() {});
+                            },
+                      icon: isAdding
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.black,
+                              ),
+                            )
+                          : const Icon(Icons.check_circle_outline_rounded, size: 18),
+                      label: Text(
+                        isAdding ? 'Extracting...' : 'Fetch & Add Configs',
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             );
@@ -1309,162 +1358,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return '${(val / 1048576).toStringAsFixed(1)} MB/s';
   }
 
-  // ===========================================================================
-  // ۶. صفحه انیمیشنی موشک در حال پرواز (Rocket Launch Scanner Screen)
-  // ===========================================================================
-
-  Widget _buildRocketScannerScreen() {
-    final double wave = sin(_rocketController.value * 2 * pi);
-    final double flameScale = 0.85 + 0.30 * sin(_rocketController.value * 6 * pi).abs();
-
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: CustomPaint(
-            painter: StarfieldPainter(_stars),
-          ),
-        ),
-        Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Spacer(flex: 2),
-              Transform.translate(
-                offset: Offset(wave * 4.0, -10.0 * wave.abs()),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 135,
-                      height: 135,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: [
-                            const Color(0xFF00F5D4).withOpacity(0.28),
-                            const Color(0xFF7B2CBF).withOpacity(0.12),
-                            Colors.transparent,
-                          ],
-                        ),
-                      ),
-                      child: Center(
-                        child: Transform.rotate(
-                          angle: -0.785,
-                          child: const Icon(
-                            Icons.rocket_launch_rounded,
-                            size: 82,
-                            color: Color(0xFF00F5D4),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Transform.scale(
-                      scaleY: flameScale,
-                      scaleX: 0.9 + (0.2 * wave.abs()),
-                      child: Container(
-                        width: 22,
-                        height: 55,
-                        decoration: BoxDecoration(
-                          borderRadius: const BorderRadius.vertical(
-                            bottom: Radius.circular(30),
-                            top: Radius.circular(8),
-                          ),
-                          gradient: const LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Color(0xFF00F5D4),
-                              Colors.amberAccent,
-                              Colors.deepOrangeAccent,
-                              Colors.transparent,
-                            ],
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.amberAccent.withOpacity(0.6),
-                              blurRadius: 18,
-                              spreadRadius: 2,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 36),
-              const Text(
-                'LAUNCHING CONNECTION...',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2.2,
-                  color: Color(0xFF00F5D4),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: Text(
-                  rocketScanDetail,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Colors.white70,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const Spacer(flex: 2),
-              TextButton.icon(
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.white70,
-                  backgroundColor: const Color(0xFF161B28),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    side: const BorderSide(color: Colors.white12),
-                  ),
-                ),
-                onPressed: _onConnectButtonPressed,
-                icon: const Icon(Icons.close_rounded, size: 18),
-                label: const Text(
-                  'Cancel Launch',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                ),
-              ),
-              const SizedBox(height: 28),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ===========================================================================
-  // ۷. رابط کاربری اصلی
-  // ===========================================================================
-
   @override
   Widget build(BuildContext context) {
-    if (isConnecting) {
-      return Scaffold(
-        body: SafeArea(
-          child: _buildRocketScannerScreen(),
-        ),
-      );
-    }
+    final Color activeColor = isConnected
+        ? _theme.primary
+        : (isConnecting ? Colors.amberAccent : _theme.secondary);
 
-    final Color primaryNeon = isConnected
-        ? (_internetIsDown || _failoverCountdownTimer != null
-            ? Colors.amberAccent
-            : const Color(0xFF00F5D4))
-        : const Color(0xFF7B2CBF);
+    final List<ServerNode> visibleServers = _getCurrentTabServers();
 
     return Scaffold(
+      backgroundColor: _theme.bg,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 18.0),
+          padding: const EdgeInsets.symmetric(horizontal: 18.0, vertical: 12.0),
           child: Column(
             children: [
               Row(
@@ -1475,199 +1381,101 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'NIVEXIA',
                             style: TextStyle(
-                              fontSize: 25,
+                              fontSize: 22,
                               fontWeight: FontWeight.w900,
-                              letterSpacing: 3.2,
-                              color: Color(0xFF00F5D4),
+                              letterSpacing: 3.0,
+                              color: _theme.primary,
                             ),
                           ),
                           Text(
-                            'SMART AUTO VPN',
-                            style: TextStyle(
-                              fontSize: 10,
-                              letterSpacing: 1.4,
-                              color: Colors.grey.shade400,
+                            _theme.name.toUpperCase(),
+                            style: const TextStyle(
+                              fontSize: 9,
+                              letterSpacing: 1.5,
+                              color: Colors.white54,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       IconButton(
-                        tooltip: 'Add Priority Sub / Config',
-                        onPressed: _openCustomSubManagerDialog,
-                        icon: const Icon(
-                          Icons.add_link_rounded,
-                          color: Color(0xFF00F5D4),
-                          size: 22,
-                        ),
+                        visualDensity: VisualDensity.compact,
+                        tooltip: 'Change Theme',
+                        onPressed: () {
+                          setState(() {
+                            _themeIndex = (_themeIndex + 1) % kThemes.length;
+                          });
+                          _saveStateToDisk();
+                        },
+                        icon: Icon(Icons.palette_outlined, color: _theme.primary, size: 20),
+                      ),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        tooltip: 'Add Custom Sub / Config',
+                        onPressed: _openAddCustomSubSheet,
+                        icon: Icon(Icons.add_circle_outline_rounded, color: _theme.primary, size: 21),
+                      ),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        tooltip: 'Sync GitHub Configs',
+                        onPressed: () => _syncAllConfigsFromRemote(silent: false),
+                        icon: isSyncingSubs
+                            ? SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: _theme.primary,
+                                ),
+                              )
+                            : const Icon(Icons.sync_rounded, color: Colors.white70, size: 20),
                       ),
                     ],
                   ),
                   GestureDetector(
-                    onTap: _refreshPingOnTap,
+                    onTap: () {
+                      final ServerNode? target = _connectedServer ??
+                          _selectedServer ??
+                          (visibleServers.isNotEmpty ? visibleServers.first : null);
+                      if (target != null) {
+                        _refreshSingleServerPing(target);
+                      }
+                    },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF151924),
+                        color: _theme.card,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: primaryNeon.withOpacity(0.55)),
+                        border: Border.all(color: activeColor.withOpacity(0.55)),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           if (isRefreshingPing)
-                            const SizedBox(
-                              width: 14,
-                              height: 14,
+                            SizedBox(
+                              width: 13,
+                              height: 13,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: Color(0xFF00F5D4),
+                                color: _theme.primary,
                               ),
                             )
                           else
-                            Icon(Icons.bolt_rounded, color: primaryNeon, size: 17),
-                          const SizedBox(width: 6),
+                            Icon(Icons.bolt_rounded, color: activeColor, size: 16),
+                          const SizedBox(width: 5),
                           Text(
                             currentPing > 0 ? '$currentPing ms' : '-- ms',
                             style: TextStyle(
-                              color: primaryNeon,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
+                              color: activeColor,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12,
                             ),
                           ),
-                          const SizedBox(width: 6),
-                          const Icon(
-                            Icons.refresh_rounded,
-                            color: Colors.white54,
-                            size: 14,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              GestureDetector(
-                onTap: _onConnectButtonPressed,
-                child: AnimatedBuilder(
-                  animation: _pulseController,
-                  builder: (context, child) {
-                    final double glowSpread = isConnected
-                        ? (6.0 + (_pulseController.value * 10.0))
-                        : (2.0 + (_pulseController.value * 4.0));
-                    return Container(
-                      width: 220,
-                      height: 220,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: const Color(0xFF11151F),
-                        boxShadow: [
-                          BoxShadow(
-                            color: primaryNeon.withOpacity(isConnected ? 0.38 : 0.18),
-                            blurRadius: isConnected ? 45 : 25,
-                            spreadRadius: glowSpread,
-                          ),
-                        ],
-                        border: Border.all(
-                          color: primaryNeon,
-                          width: 3.2,
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            isConnected
-                                ? Icons.power_settings_new_rounded
-                                : Icons.rocket_launch_rounded,
-                            size: 62,
-                            color: primaryNeon,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            isConnected ? 'CONNECTED' : 'CONNECT',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1.8,
-                              color: isConnected ? const Color(0xFF00F5D4) : Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            isConnected ? v2rayStatus.duration : 'Tap to Launch',
-                            style: const TextStyle(fontSize: 12, color: Colors.white54),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const Spacer(),
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF131722),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white10),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.south_rounded, color: Color(0xFF00F5D4), size: 18),
-                          const SizedBox(width: 8),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'DOWNLOAD',
-                                style: TextStyle(fontSize: 9, color: Colors.white38, letterSpacing: 1),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                isConnected ? _formatSpeed(v2rayStatus.downloadSpeed) : '0 B/s',
-                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF131722),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white10),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.north_rounded, color: Color(0xFF7B2CBF), size: 18),
-                          const SizedBox(width: 8),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'UPLOAD',
-                                style: TextStyle(fontSize: 9, color: Colors.white38, letterSpacing: 1),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                isConnected ? _formatSpeed(v2rayStatus.uploadSpeed) : '0 B/s',
-                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
+                          const SizedBox(width: 5),
+                          const Icon(Icons.refresh_rounded, color: Colors.white54, size: 13),
                         ],
                       ),
                     ),
@@ -1675,38 +1483,538 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ],
               ),
               const SizedBox(height: 14),
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => _onConnectButtonPressed(),
+                    child: AnimatedBuilder(
+                      animation: _pulseController,
+                      builder: (context, child) {
+                        final double spread = isConnected
+                            ? (4.0 + (_pulseController.value * 7.0))
+                            : (1.5 + (_pulseController.value * 3.0));
+                        return Container(
+                          width: 132,
+                          height: 132,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _theme.card,
+                            boxShadow: [
+                              BoxShadow(
+                                color: activeColor.withOpacity(isConnected ? 0.35 : 0.16),
+                                blurRadius: isConnected ? 30 : 18,
+                                spreadRadius: spread,
+                              ),
+                            ],
+                            border: Border.all(color: activeColor, width: 2.8),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                isConnecting
+                                    ? Icons.sync_rounded
+                                    : Icons.power_settings_new_rounded,
+                                size: 42,
+                                color: activeColor,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                isConnecting
+                                    ? 'WAIT...'
+                                    : (isConnected ? 'CONNECTED' : 'CONNECT'),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.3,
+                                  color: isConnected ? _theme.primary : Colors.white,
+                                ),
+                              ),
+                              if (isConnected) ...[
+                                const SizedBox(height: 3),
+                                Text(
+                                  v2rayStatus.duration,
+                                  style: const TextStyle(fontSize: 10, color: Colors.white60),
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        GestureDetector(
+                          onTap: () {
+                            if (_connectedServer != null) {
+                              _refreshSingleServerPing(_connectedServer!);
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: _theme.card,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: activeColor.withOpacity(0.35)),
+                            ),
+                            child: Row(
+                              children: [
+                                _buildHighQualityFlag(
+                                  _connectedServer?.countryCode ??
+                                      _selectedServer?.countryCode ??
+                                      'UN',
+                                  size: 26,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        isConnected && _connectedServer != null
+                                            ? _connectedServer!.name
+                                            : statusMessage,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        isConnected && _connectedServer != null
+                                            ? '${_connectedServer!.countryName} • ${currentPing > 0 ? "$currentPing ms" : "Tap to ping"}'
+                                            : 'Mode: ${_selectedTab.toUpperCase()}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: _theme.primary,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+                                decoration: BoxDecoration(
+                                  color: _theme.card,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: Colors.white10),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(Icons.south_rounded, color: _theme.primary, size: 13),
+                                        const SizedBox(width: 4),
+                                        const Text(
+                                          'DOWNLOAD',
+                                          style: TextStyle(fontSize: 8.5, color: Colors.white54),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      isConnected ? _formatSpeed(v2rayStatus.downloadSpeed) : '0 B/s',
+                                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+                                decoration: BoxDecoration(
+                                  color: _theme.card,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: Colors.white10),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(Icons.north_rounded, color: _theme.secondary, size: 13),
+                                        const SizedBox(width: 4),
+                                        const Text(
+                                          'UPLOAD',
+                                          style: TextStyle(fontSize: 8.5, color: Colors.white54),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      isConnected ? _formatSpeed(v2rayStatus.uploadSpeed) : '0 B/s',
+                                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
               Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF151924),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: primaryNeon.withOpacity(0.3)),
+                  color: _theme.card,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white10),
                 ),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      _internetIsDown
-                          ? Icons.wifi_off_rounded
-                          : Icons.shield_rounded,
-                      color: primaryNeon,
-                      size: 18,
+                    _buildGroupTabButton(
+                      id: 'auto',
+                      title: 'AUTO (${_irancellServers.length + _mciServers.length})',
+                      icon: Icons.auto_awesome_rounded,
                     ),
-                    const SizedBox(width: 10),
-                    Flexible(
-                      child: Text(
-                        statusMessage,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.white70,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        textAlign: TextAlign.center,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                    _buildGroupTabButton(
+                      id: 'irancell',
+                      title: 'IRANCELL (${_irancellServers.length})',
+                      icon: Icons.sim_card_rounded,
+                    ),
+                    _buildGroupTabButton(
+                      id: 'mci',
+                      title: 'MCI (${_mciServers.length})',
+                      icon: Icons.network_cell_rounded,
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'SERVERS LIST',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.4,
+                      color: Colors.grey.shade400,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      InkWell(
+                        onTap: _runTcpPingForCurrentTab,
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _theme.surface,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _theme.primary.withOpacity(0.4)),
+                          ),
+                          child: Row(
+                            children: [
+                              if (isTestingTcp)
+                                SizedBox(
+                                  width: 11,
+                                  height: 11,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 1.8,
+                                    color: _theme.primary,
+                                  ),
+                                )
+                              else
+                                Icon(Icons.speed_rounded, size: 13, color: _theme.primary),
+                              const SizedBox(width: 5),
+                              Text(
+                                'TCP Ping',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: _theme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: _runRealTestForCurrentTab,
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _theme.surface,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _theme.secondary.withOpacity(0.5)),
+                          ),
+                          child: Row(
+                            children: [
+                              if (isTestingReal)
+                                const SizedBox(
+                                  width: 11,
+                                  height: 11,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 1.8,
+                                    color: Colors.amberAccent,
+                                  ),
+                                )
+                              else
+                                const Icon(Icons.verified_outlined, size: 13, color: Colors.amberAccent),
+                              const SizedBox(width: 5),
+                              const Text(
+                                'Real Test',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.amberAccent,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: visibleServers.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.dns_outlined, size: 42, color: Colors.grey.shade700),
+                            const SizedBox(height: 10),
+                            Text(
+                              'No configs in ${_selectedTab.toUpperCase()} group yet',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white60,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Add configs to irancell.txt / mci.txt in GitHub or tap + above',
+                              style: TextStyle(fontSize: 11, color: Colors.white38),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: visibleServers.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final ServerNode srv = visibleServers[index];
+                          final bool isThisConnected =
+                              isConnected && _connectedServer?.rawUri == srv.rawUri;
+                          final bool isThisSelected =
+                              _selectedServer?.rawUri == srv.rawUri;
+
+                          final int pingVal = srv.displayPing;
+                          final Color pingColor = pingVal <= 0
+                              ? Colors.white38
+                              : (pingVal < 250
+                                  ? Colors.greenAccent
+                                  : (pingVal < 600 ? Colors.amberAccent : Colors.redAccent));
+
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _selectedServer = srv;
+                                if (srv.displayPing > 0) {
+                                  currentPing = srv.displayPing;
+                                }
+                              });
+                              _onConnectButtonPressed(specificServer: srv);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isThisConnected
+                                    ? _theme.primary.withOpacity(0.12)
+                                    : _theme.card,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: isThisConnected
+                                      ? _theme.primary
+                                      : (isThisSelected
+                                          ? _theme.primary.withOpacity(0.45)
+                                          : Colors.white10),
+                                  width: isThisConnected ? 1.8 : 1.0,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  _buildHighQualityFlag(srv.countryCode, size: 34),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          srv.name,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 13.5,
+                                            fontWeight: FontWeight.w800,
+                                            color: isThisConnected
+                                                ? _theme.primary
+                                                : Colors.white,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 6,
+                                                vertical: 1.5,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: _theme.surface,
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                srv.group.toUpperCase(),
+                                                style: TextStyle(
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: _theme.primary,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Flexible(
+                                              child: Text(
+                                                srv.countryCode != 'UN'
+                                                    ? srv.countryName
+                                                    : 'Tap ping to detect',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 10.5,
+                                                  color: Colors.white54,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  GestureDetector(
+                                    onTap: () => _refreshSingleServerPing(srv),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 6,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: _theme.surface,
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(
+                                          color: pingColor.withOpacity(0.4),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.bolt_rounded,
+                                            size: 14,
+                                            color: pingColor,
+                                          ),
+                                          const SizedBox(width: 3),
+                                          Text(
+                                            pingVal > 0 ? '$pingVal ms' : 'Ping',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w800,
+                                              color: pingColor,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGroupTabButton({
+    required String id,
+    required String title,
+    required IconData icon,
+  }) {
+    final bool selected = _selectedTab == id;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() => _selectedTab = id);
+          _saveStateToDisk();
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? _theme.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 14,
+                color: selected ? Colors.black : Colors.white70,
+              ),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w900,
+                    color: selected ? Colors.black : Colors.white70,
+                  ),
                 ),
               ),
             ],
@@ -1715,30 +2023,4 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
     );
   }
-}
-
-class StarfieldPainter extends CustomPainter {
-  final List<StarParticle> stars;
-
-  StarfieldPainter(this.stars);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final Paint paint = Paint()..style = PaintingStyle.fill;
-    for (final star in stars) {
-      paint.color = Colors.white.withOpacity(star.opacity);
-      final double dx = star.x * size.width;
-      final double dy = star.y * size.height;
-      canvas.drawCircle(Offset(dx, dy), star.size, paint);
-      paint.color = const Color(0xFF00F5D4).withOpacity(star.opacity * 0.4);
-      canvas.drawLine(
-        Offset(dx, dy),
-        Offset(dx, dy - (star.speed * 600)),
-        paint..strokeWidth = star.size * 0.8,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
