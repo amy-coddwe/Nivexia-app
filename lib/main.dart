@@ -41,6 +41,7 @@ class ReadyServer {
   final String protocol;
   final String address;
   final int port;
+  final int localHttpPort;
   int ping;
 
   ReadyServer({
@@ -49,6 +50,7 @@ class ReadyServer {
     required this.protocol,
     required this.address,
     required this.port,
+    required this.localHttpPort,
     required this.ping,
   });
 
@@ -58,6 +60,7 @@ class ReadyServer {
         'protocol': protocol,
         'address': address,
         'port': port,
+        'localHttpPort': localHttpPort,
         'ping': ping,
       };
 
@@ -67,6 +70,7 @@ class ReadyServer {
         protocol: map['protocol'] ?? 'VLESS',
         address: map['address'] ?? '',
         port: map['port'] ?? 443,
+        localHttpPort: map['localHttpPort'] ?? 10809,
         ping: map['ping'] ?? 150,
       );
 }
@@ -103,8 +107,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         v2rayStatus = status;
         if (st == "CONNECTED") {
           _nativeVpnRunning = true;
-          isConnected = true;
-          isConnecting = false;
         } else if (st == "DISCONNECTED") {
           _nativeVpnRunning = false;
           if (!isConnecting && !_isAutoSwitching) {
@@ -136,13 +138,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   int _configFailSeconds = 0;
   bool _internetIsDown = false;
 
-  // لیست کانفیگ‌های سالم ذخیره‌شده از دفعات قبلی (اولویت شماره ۱)
+  // لیست کانفیگ‌های سالم ذخیره‌شده از دفعات قبلی (اولویت ۱)
   final List<ReadyServer> _savedWorkingConfigs = [];
   // لیست ساب‌لینک‌ها یا کانفیگ‌های اضافه‌شده توسط ادمین/کاربر
   final List<String> _customUserInputs = [];
   ReadyServer? _activeServer;
 
-  // ۱. لینک فایل ادمین در گیت‌هاب خودت (بدون نیاز به آپدیت برنامه، هر وقت فایل admin_subs.txt را در گیت‌هابت بسازی/ویرایش کنی، اول از همه خوانده می‌شود)
+  // ۱. فایل کنترل از راه دور ادمین در گیت‌هاب خودت (بدون نیاز به آپدیت برنامه)
   final List<String> _remoteAdminControlUrls = const [
     'https://raw.githubusercontent.com/amy-coddwe/Nivexia-app/main/admin_subs.txt',
     'https://ghfast.top/https://raw.githubusercontent.com/amy-coddwe/Nivexia-app/main/admin_subs.txt',
@@ -156,7 +158,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     'https://cdn.jsdelivr.net/gh/hiddify/hiddify-app@main/test.configs/mahsa',
   ];
 
-  // ۳. ساب‌لینک‌های پشتیبان Epodonios (فقط در صورتی که ساب‌های بالا کار نکنند سراغ این‌ها می‌رود)
+  // ۳. ساب‌لینک‌های پشتیبان Epodonios
   final List<String> _fallbackEpodoniosUrls = const [
     'https://ghfast.top/https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt',
     'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt',
@@ -176,7 +178,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
 
-    // انیمیشن مخصوص حرکت موشک و ستاره‌ها در صفحه اسکن
     final Random rnd = Random();
     for (int i = 0; i < 45; i++) {
       _stars.add(StarParticle(
@@ -213,11 +214,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       notificationIconResourceName: "ic_launcher",
     );
 
-    // بارگذاری کانفیگ‌های سالم قبلی و ساب‌های سفارشی از حافظه دائمی گوشی
-    // (توجه: هیچ اسکن خودکاری اینجا انجام نمی‌شود تا زمانی که خود کاربر روی دکمه کانکت بزند!)
     await _loadPersistentData();
 
-    // مانیتورینگ وضعیت اتصال (فقط زمانی که VPN متصل است هر ۱۲ ثانیه چک می‌کند)
     _healthWatchdogTimer = Timer.periodic(const Duration(seconds: 12), (_) {
       if (isConnected && !isConnecting && !_isAutoSwitching) {
         _checkConnectionAndHandleFailover();
@@ -235,7 +233,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   // ===========================================================================
-  // ۱. حافظه دائمی گوشی (بدون پاک شدن بعد از بستن برنامه)
+  // ۱. حافظه دائمی گوشی برای ذخیره کانفیگ‌های سالم و ساب‌های ادمین
   // ===========================================================================
 
   Future<File> _getPermanentFile(String fileName) async {
@@ -258,7 +256,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Future<void> _loadPersistentData() async {
     try {
-      final File workingFile = await _getPermanentFile('nivexia_working_v5.json');
+      final File workingFile = await _getPermanentFile('nivexia_working_v6.json');
       if (await workingFile.exists()) {
         final String content = await workingFile.readAsString();
         final List<dynamic> list = jsonDecode(content);
@@ -266,13 +264,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         for (final item in list) {
           final srv = ReadyServer.fromMap(Map<String, dynamic>.from(item));
           if (srv.rawUri.isNotEmpty &&
+              srv.ping >= 40 &&
               !_savedWorkingConfigs.any((s) => s.rawUri == srv.rawUri)) {
             _savedWorkingConfigs.add(srv);
           }
         }
       }
 
-      final File customFile = await _getPermanentFile('nivexia_custom_subs_v5.json');
+      final File customFile = await _getPermanentFile('nivexia_custom_subs_v6.json');
       if (await customFile.exists()) {
         final String content = await customFile.readAsString();
         final List<dynamic> list = jsonDecode(content);
@@ -297,7 +296,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Future<void> _saveWorkingConfigsToDisk() async {
     try {
-      final File workingFile = await _getPermanentFile('nivexia_working_v5.json');
+      final File workingFile = await _getPermanentFile('nivexia_working_v6.json');
       final List<Map<String, dynamic>> data =
           _savedWorkingConfigs.take(15).map((s) => s.toMap()).toList();
       await workingFile.writeAsString(jsonEncode(data));
@@ -306,13 +305,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Future<void> _saveCustomInputsToDisk() async {
     try {
-      final File customFile = await _getPermanentFile('nivexia_custom_subs_v5.json');
+      final File customFile = await _getPermanentFile('nivexia_custom_subs_v6.json');
       await customFile.writeAsString(jsonEncode(_customUserInputs));
     } catch (_) {}
   }
 
   // ===========================================================================
-  // ۲. استخراج و آماده‌سازی کانفیگ‌ها و ساب‌لینک‌ها
+  // ۲. استخراج و آماده‌سازی کانفیگ‌ها
   // ===========================================================================
 
   bool _isInvalidOrLocalIp(String address) {
@@ -461,19 +460,49 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         parser.streamSetting['tlsSettings']['allowInsecure'] = true;
       }
 
-      parser.dns = {
+      final Map<String, dynamic> cfg =
+          Map<String, dynamic>.from(jsonDecode(parser.getFullConfiguration()));
+
+      cfg['dns'] = {
         "servers": ["1.1.1.1", "8.8.8.8"]
       };
+
+      int httpPort = 10809;
+      if (cfg['inbounds'] is List) {
+        final List inbounds = cfg['inbounds'] as List;
+        bool foundHttp = false;
+        for (final ib in inbounds) {
+          if (ib is Map && ib['protocol'] == 'http' && ib['port'] is int) {
+            httpPort = ib['port'];
+            foundHttp = true;
+            break;
+          }
+        }
+        if (!foundHttp) {
+          inbounds.add({
+            "tag": "http",
+            "port": 10809,
+            "listen": "127.0.0.1",
+            "protocol": "http",
+            "sniffing": {
+              "enabled": true,
+              "destOverride": ["http", "tls"]
+            },
+            "settings": {}
+          });
+        }
+      }
 
       String proto = uri.split('://').first.toUpperCase();
       if (uri.contains('security=reality')) proto = 'REALITY';
 
       return ReadyServer(
         rawUri: uri,
-        configJson: parser.getFullConfiguration(),
+        configJson: jsonEncode(cfg),
         protocol: proto,
         address: host,
         port: port,
+        localHttpPort: httpPort,
         ping: -1,
       );
     } catch (_) {
@@ -481,7 +510,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  Future<String> _downloadUrl Fast(String url, {int maxBytes = 300000}) async {
+  Future<String> _downloadUrlFast(String url, {int maxBytes = 300000}) async {
     final http.Client client = http.Client();
     try {
       final http.Request req = http.Request('GET', Uri.parse(url));
@@ -538,7 +567,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   // ===========================================================================
-  // ۳. تست دقیق یک کانفیگ و توقف فوری اسکن به محض پیدا شدن اولین کانفیگ سالم!
+  // ۳. اسکن و تست واقعی کانفیگ‌ها و توقف کامل به محض اتصال
   // ===========================================================================
 
   Future<int> _checkSocketPing(String host, int port) async {
@@ -559,13 +588,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  /// تست واقعی کانفیگ با هسته Xray (در حالی که VPN خاموش است و هیچ تداخلی وجود ندارد)
   Future<int> _verifyConfigWithXrayCore(ReadyServer candidate) async {
-    // ۱. اول چک می‌کنیم آی‌پی و پورت سرور همین لحظه باز باشد (رد کردن پینگ‌های فیک زیر ۲۵ میلی‌ثانیه)
     final int tcpMs = await _checkSocketPing(candidate.address, candidate.port);
     if (tcpMs < 25 || tcpMs > 1000) return -1;
 
-    // ۲. تست واقعی تاخیر تونل با هسته Xray
     try {
       final int coreDelay = await v2ray
           .getServerDelay(
@@ -579,7 +605,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
     } catch (_) {}
 
-    // ۳. تست دوم با آدرس گوگل در صورتی که کلودفلر روی آن سرور مسدود بود
     try {
       final int googleDelay = await v2ray
           .getServerDelay(
@@ -596,8 +621,129 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return -1;
   }
 
-  /// اسکن یک لیست از لینک‌های کانفیگ؛ به محض پیدا کردن اولین کانفیگ سالم، اسکن را متوقف و آن را برمی‌گرداند!
-  Future<ReadyServer?> _scanConfigListUntilFirstHealthy(
+  /// تست واقعی دانلود از طریق پورت لوکال هسته Xray بعد از روشن شدن تانل
+  Future<int> _verifyRealDownloadThroughLocalProxy(int localHttpPort) async {
+    final List<String> testUrls = [
+      'http://cp.cloudflare.com/generate_204',
+      'http://www.gstatic.com/generate_204',
+    ];
+
+    for (final String url in testUrls) {
+      HttpClient? proxyClient;
+      try {
+        proxyClient = HttpClient();
+        proxyClient.connectionTimeout = const Duration(milliseconds: 2800);
+        proxyClient.findProxy = (uri) => "PROXY 127.0.0.1:$localHttpPort";
+
+        final Stopwatch sw = Stopwatch()..start();
+        final HttpClientRequest req = await proxyClient
+            .getUrl(Uri.parse(url))
+            .timeout(const Duration(milliseconds: 2800));
+        req.headers.set('User-Agent', 'Mozilla/5.0');
+
+        final HttpClientResponse res =
+            await req.close().timeout(const Duration(milliseconds: 2800));
+        await res.drain().timeout(const Duration(milliseconds: 1500));
+        sw.stop();
+        proxyClient.close(force: true);
+
+        if ((res.statusCode == 204 || res.statusCode == 200) &&
+            sw.elapsedMilliseconds >= 40) {
+          return sw.elapsedMilliseconds;
+        }
+      } catch (_) {
+        proxyClient?.close(force: true);
+      }
+    }
+
+    try {
+      final int coreDelay = await v2ray
+          .getConnectedServerDelay()
+          .timeout(const Duration(milliseconds: 2800), onTimeout: () => -1);
+      if (coreDelay >= 45 && coreDelay < 3500) {
+        return coreDelay;
+      }
+    } catch (_) {}
+
+    return -1;
+  }
+
+  /// تست و اتصال واقعی؛ اگر سرور وصل شد و دانلود واقعی داشت، true برمی‌گرداند و اسکن متوقف می‌شود
+  Future<bool> _tryStartAndVerifyServer(ReadyServer srv) async {
+    try {
+      if (mounted) {
+        setState(() {
+          rocketScanDetail =
+              'Testing download on ${srv.protocol} (${srv.ping} ms)...';
+        });
+      }
+
+      _nativeVpnRunning = false;
+      await v2ray.startV2Ray(
+        remark: "Nivexia VPN (${srv.protocol})",
+        config: srv.configJson,
+        blockedApps: null,
+        bypassSubnets: null,
+        proxyOnly: false,
+      );
+
+      int waitedMs = 0;
+      while (!_nativeVpnRunning && waitedMs < 3200) {
+        if (_userCancelled) {
+          await v2ray.stopV2Ray();
+          return false;
+        }
+        await Future.delayed(const Duration(milliseconds: 150));
+        waitedMs += 150;
+      }
+
+      if (!_nativeVpnRunning) {
+        await v2ray.stopV2Ray();
+        return false;
+      }
+
+      await Future.delayed(const Duration(milliseconds: 450));
+      if (_userCancelled) {
+        await v2ray.stopV2Ray();
+        return false;
+      }
+
+      final int realDownloadPing =
+          await _verifyRealDownloadThroughLocalProxy(srv.localHttpPort);
+
+      if (realDownloadPing < 40 || !_nativeVpnRunning) {
+        await v2ray.stopV2Ray();
+        await Future.delayed(const Duration(milliseconds: 250));
+        return false;
+      }
+
+      srv.ping = realDownloadPing;
+      _savedWorkingConfigs.removeWhere((s) => s.rawUri == srv.rawUri);
+      _savedWorkingConfigs.insert(0, srv);
+      await _saveWorkingConfigsToDisk();
+
+      _activeServer = srv;
+      _rocketController.stop();
+
+      if (mounted) {
+        setState(() {
+          isConnected = true;
+          isConnecting = false;
+          currentPing = realDownloadPing;
+          statusMessage = 'Connected • ${srv.protocol} Active';
+        });
+      }
+      return true;
+    } catch (_) {
+      try {
+        await v2ray.stopV2Ray();
+      } catch (_) {}
+      return false;
+    }
+  }
+
+  /// اسکن یک لیست از کانفیگ‌ها و اتصال فوری به اولین کانفیگ سالم (و توقف کامل ادامه اسکن)
+  Future<bool> _scanAndConnectFirstWorking(
     List<String> rawUris,
     String sourceLabel,
   ) async {
@@ -609,12 +755,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
     }
 
-    if (parsedNodes.isEmpty) return null;
+    if (parsedNodes.isEmpty) return false;
 
-    // غربال سریع پورت باز در دسته‌های ۳۰ تایی
     const int batchSize = 30;
     for (int offset = 0; offset < parsedNodes.length; offset += batchSize) {
-      if (_userCancelled) return null;
+      if (_userCancelled) return false;
 
       final int end = min(offset + batchSize, parsedNodes.length);
       final List<ReadyServer> batch = parsedNodes.sublist(offset, end);
@@ -637,37 +782,42 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
       if (openPortNodes.isEmpty) continue;
 
-      openPortNodes.sort((a, b) => a.ping.compareTo(b.ping));
+      openPortNodes.sort((a, b) {
+        final int aIsReality = a.protocol == 'REALITY' ? 1 : 0;
+        final int bIsReality = b.protocol == 'REALITY' ? 1 : 0;
+        if (aIsReality != bIsReality) return aIsReality.compareTo(bIsReality);
+        return a.ping.compareTo(b.ping);
+      });
 
-      // تست تک‌به‌تک با هسته Xray؛ به محض اینکه اولین کانفیگ سالم جواب داد، درجا متوقف شو و برگرد!
       for (int i = 0; i < openPortNodes.length; i++) {
-        if (_userCancelled) return null;
+        if (_userCancelled) return false;
         final ReadyServer candidate = openPortNodes[i];
 
         if (mounted) {
           setState(() {
             rocketScanDetail =
-                'Verifying $sourceLabel tunnel (${i + 1}/${openPortNodes.length})...';
+                'Verifying $sourceLabel (${i + 1}/${openPortNodes.length})...';
           });
         }
 
         final int verifiedDelay = await _verifyConfigWithXrayCore(candidate);
         if (verifiedDelay >= 40 && verifiedDelay < 3000) {
           candidate.ping = verifiedDelay;
-          return candidate; // پیدا شد! توقف کامل ادامه اسکن!
+          final bool connected = await _tryStartAndVerifyServer(candidate);
+          if (connected) {
+            return true; // متصل شد! توقف کامل اسکن!
+          }
         }
       }
     }
 
-    return null;
+    return false;
   }
 
-  /// دریافت کانفیگ‌های ادمین (هم از گیت‌هاب تو بدون آپدیت برنامه و هم از لیست دستی داخل اپ)
   Future<List<String>> _fetchAdminAndCustomConfigs() async {
     final List<String> allAdminConfigs = [];
     final List<String> subUrlsToFetch = [];
 
-    // ۱. بررسی ورودی‌های دستی داخل برنامه
     for (final item in _customUserInputs) {
       if (item.startsWith('http://') || item.startsWith('https://')) {
         subUrlsToFetch.add(item);
@@ -676,7 +826,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
     }
 
-    // ۲. بررسی فایل admin_subs.txt در گیت‌هاب خودت (بدون نیاز به آپدیت برنامه!)
     for (final adminUrl in _remoteAdminControlUrls) {
       if (_userCancelled) break;
       final String body = await _downloadUrlFast(adminUrl, maxBytes: 150000);
@@ -694,7 +843,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
     }
 
-    // ۳. دانلود ساب‌لینک‌هایی که ادمین معرفی کرده است
     for (final subUrl in subUrlsToFetch) {
       if (_userCancelled) break;
       final String subBody = await _downloadUrlFast(subUrl, maxBytes: 250000);
@@ -706,25 +854,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return allAdminConfigs;
   }
 
-  /// الگوریتم اصلی پیدا کردن سرور به ترتیب اولویت دقیق خواسته شده:
-  /// ۱. کانفیگ‌های سالم قبلی (Saved Working Configs)
-  /// ۲. ساب‌لینک‌ها و کانفیگ‌های ادمین (GitHub admin_subs.txt + Custom Subs)
-  /// ۳. ساب‌لینک جدید Hiddify Mahsa (حدود ۳۰-۴۰ کانفیگ)
-  /// ۴. ساب‌لینک‌های Epodonios
-  Future<ReadyServer?> _findWorkingServerByPriority() async {
-    // اطمینان از خاموش بودن کامل سرویس قبلی قبل از شروع تست هسته
+  Future<bool> _launchPriorityScanAndConnect() async {
     try {
       await v2ray.stopV2Ray();
     } catch (_) {}
-    await Future.delayed(const Duration(milliseconds: 500));
+    await Future.delayed(const Duration(milliseconds: 400));
 
-    // -------------------------------------------------------------------------
-    // اولویت ۱: تست مجدد کانفیگ‌های سالم ذخیره‌شده از دفعات قبلی
-    // -------------------------------------------------------------------------
+    // ۱. اولویت اول: کانفیگ‌های سالم ذخیره‌شده از دفعات قبلی
     if (_savedWorkingConfigs.isNotEmpty && !_userCancelled) {
       final List<ReadyServer> savedCopy = List<ReadyServer>.from(_savedWorkingConfigs);
       for (int i = 0; i < savedCopy.length; i++) {
-        if (_userCancelled) return null;
+        if (_userCancelled) return false;
         final ReadyServer savedSrv = savedCopy[i];
 
         if (mounted) {
@@ -737,19 +877,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         final int delay = await _verifyConfigWithXrayCore(savedSrv);
         if (delay >= 40 && delay < 3000) {
           savedSrv.ping = delay;
-          // این کانفیگِ ذخیره‌شده هنوز سالم است! درجا برگردان و اسکن را متوقف کن!
-          return savedSrv;
-        } else {
-          // این کانفیگ قبلی دیگر از کار افتاده؛ حذفش کن تا دفعه بعد وقت نگیرد
-          _savedWorkingConfigs.removeWhere((s) => s.rawUri == savedSrv.rawUri);
-          await _saveWorkingConfigsToDisk();
+          final bool ok = await _tryStartAndVerifyServer(savedSrv);
+          if (ok) return true;
         }
+        _savedWorkingConfigs.removeWhere((s) => s.rawUri == savedSrv.rawUri);
+        await _saveWorkingConfigsToDisk();
       }
     }
 
-    // -------------------------------------------------------------------------
-    // اولویت ۲: ساب‌لینک‌ها و کانفیگ‌های ادمین (بدون نیاز به آپدیت برنامه)
-    // -------------------------------------------------------------------------
+    // ۲. اولویت دوم: ساب‌لینک‌ها و کانفیگ‌های ادمین (GitHub admin_subs.txt + لیست دستی)
     if (!_userCancelled) {
       if (mounted) {
         setState(() {
@@ -758,17 +894,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
       final List<String> adminConfigs = await _fetchAdminAndCustomConfigs();
       if (adminConfigs.isNotEmpty && !_userCancelled) {
-        final ReadyServer? winner = await _scanConfigListUntilFirstHealthy(
+        final bool ok = await _scanAndConnectFirstWorking(
           adminConfigs,
           'Admin Priority',
         );
-        if (winner != null) return winner;
+        if (ok) return true;
       }
     }
 
-    // -------------------------------------------------------------------------
-    // اولویت ۳: ساب‌لینک جدید Hiddify Mahsa (سریع، ۳۰-۴۰ کانفیگ)
-    // -------------------------------------------------------------------------
+    // ۳. اولویت سوم: ساب‌لینک جدید Hiddify Mahsa (حدود ۳۰-۴۰ کانفیگ سریع)
     if (!_userCancelled) {
       if (mounted) {
         setState(() {
@@ -786,20 +920,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
 
       if (mahsaConfigs.isNotEmpty && !_userCancelled) {
-        final ReadyServer? winner = await _scanConfigListUntilFirstHealthy(
+        final bool ok = await _scanAndConnectFirstWorking(
           mahsaConfigs,
           'Hiddify Mahsa',
         );
-        if (winner != null) return winner;
+        if (ok) return true;
       }
     }
 
-    // -------------------------------------------------------------------------
-    // اولویت ۴: منابع Epodonios (در صورتی که هیچ‌کدام از بالایی‌ها جواب ندادند)
-    // -------------------------------------------------------------------------
+    // ۴. اولویت چهارم: ساب‌لینک‌های پشتیبان Epodonios
     for (final epUrl in _fallbackEpodoniosUrls) {
       if (_userCancelled) break;
-      final String protoLabel = epUrl.split('/').last.replaceAll('.txt', '').toUpperCase();
+      final String protoLabel =
+          epUrl.split('/').last.replaceAll('.txt', '').toUpperCase();
       if (mounted) {
         setState(() {
           rocketScanDetail = 'Loading Epodonios $protoLabel backup sub...';
@@ -812,75 +945,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final List<String> epConfigs = _extractConfigsFromText(body);
       if (epConfigs.isEmpty) continue;
 
-      final ReadyServer? winner = await _scanConfigListUntilFirstHealthy(
-        epConfigs.take(300).toList(),
+      final bool ok = await _scanAndConnectFirstWorking(
+        epConfigs.take(250).toList(),
         'Epodonios $protoLabel',
       );
-      if (winner != null) return winner;
+      if (ok) return true;
     }
 
-    return null;
-  }
-
-  // ===========================================================================
-  // ۴. شروع اتصال و نمایش صفحه موشک
-  // ===========================================================================
-
-  Future<bool> _connectToVerifiedServer(ReadyServer srv) async {
-    try {
-      if (mounted) {
-        setState(() {
-          rocketScanDetail = 'Rocket in orbit! Connecting (${srv.ping} ms)...';
-        });
-      }
-
-      _nativeVpnRunning = false;
-      await v2ray.startV2Ray(
-        remark: "Nivexia VPN (${srv.protocol})",
-        config: srv.configJson,
-        blockedApps: null,
-        bypassSubnets: null,
-        proxyOnly: false,
-      );
-
-      int waitedMs = 0;
-      while (!_nativeVpnRunning && waitedMs < 3500) {
-        if (_userCancelled) {
-          await v2ray.stopV2Ray();
-          return false;
-        }
-        await Future.delayed(const Duration(milliseconds: 150));
-        waitedMs += 150;
-      }
-
-      if (!_nativeVpnRunning) {
-        await v2ray.stopV2Ray();
-        return false;
-      }
-
-      // ذخیره این کانفیگ سالم در صدر لیست دائمی تا دفعه بعد اول از همه همین بررسی شود!
-      _savedWorkingConfigs.removeWhere((s) => s.rawUri == srv.rawUri);
-      _savedWorkingConfigs.insert(0, srv);
-      await _saveWorkingConfigsToDisk();
-
-      _activeServer = srv;
-      _rocketController.stop();
-
-      if (mounted) {
-        setState(() {
-          isConnected = true;
-          isConnecting = false;
-          currentPing = srv.ping;
-          statusMessage = 'Connected • ${srv.protocol} Active';
-        });
-      }
-      return true;
-    } catch (_) {
-      try {
-        await v2ray.stopV2Ray();
-      } catch (_) {}
-      return false;
-    }
+    return false;
   }
 
   Future<void> _onConnectButtonPressed() async {
@@ -918,12 +990,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
     _rocketController.repeat();
 
-    final ReadyServer? winningServer = await _findWorkingServerByPriority();
-
-    if (winningServer != null && !_userCancelled) {
-      final bool connectedOk = await _connectToVerifiedServer(winningServer);
-      if (connectedOk) return;
-    }
+    final bool connectedOk = await _launchPriorityScanAndConnect();
+    if (connectedOk) return;
 
     _rocketController.stop();
     if (mounted && !_userCancelled) {
@@ -936,7 +1004,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   // ===========================================================================
-  // ۵. رفرش کلیکی پینگ + تشخیص قطعی کانفیگ یا اینترنت (۳۰ ثانیه)
+  // ۴. رفرش کلیکی پینگ + تشخیص قطعی کانفیگ یا اینترنت (۳۰ ثانیه)
   // ===========================================================================
 
   Future<void> _refreshPingOnTap() async {
@@ -945,14 +1013,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     try {
       if (isConnected && _activeServer != null) {
-        int delay = await v2ray
-            .getConnectedServerDelay()
-            .timeout(const Duration(milliseconds: 2800), onTimeout: () => -1);
-        if (delay <= 0) {
-          delay = await _checkSocketPing(_activeServer!.address, _activeServer!.port);
-        }
-        if (mounted && delay > 0) {
-          setState(() => currentPing = delay);
+        final int realPing =
+            await _verifyRealDownloadThroughLocalProxy(_activeServer!.localHttpPort);
+        if (mounted) {
+          setState(() => currentPing = realPing >= 40 ? realPing : -1);
         }
       } else if (_savedWorkingConfigs.isNotEmpty) {
         final int p = await _checkSocketPing(
@@ -990,18 +1054,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _checkConnectionAndHandleFailover() async {
     if (!isConnected || _activeServer == null || _isAutoSwitching) return;
 
-    int livePing = -1;
-    try {
-      livePing = await v2ray
-          .getConnectedServerDelay()
-          .timeout(const Duration(milliseconds: 2800), onTimeout: () => -1);
-    } catch (_) {}
+    final int livePing =
+        await _verifyRealDownloadThroughLocalProxy(_activeServer!.localHttpPort);
 
-    if (livePing <= 0) {
-      livePing = await _checkSocketPing(_activeServer!.address, _activeServer!.port);
-    }
-
-    if (livePing > 0 && livePing < 3500) {
+    if (livePing >= 40 && livePing < 3500) {
       _failoverCountdownTimer?.cancel();
       _failoverCountdownTimer = null;
       _configFailSeconds = 0;
@@ -1079,10 +1135,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
     _rocketController.repeat();
 
-    final ReadyServer? nextWinner = await _findWorkingServerByPriority();
-    if (nextWinner != null && !_userCancelled) {
-      await _connectToVerifiedServer(nextWinner);
-    } else {
+    final bool ok = await _launchPriorityScanAndConnect();
+    if (!ok) {
       _rocketController.stop();
       if (mounted) {
         setState(() {
@@ -1097,7 +1151,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   // ===========================================================================
-  // ۶. پنجره مدیریت ساب‌لینک‌ها و کانفیگ‌های اولویت‌دار
+  // ۵. پنجره مدیریت ساب‌لینک‌ها و کانفیگ‌های اولویت‌دار
   // ===========================================================================
 
   void _openCustomSubManagerDialog() {
@@ -1256,7 +1310,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   // ===========================================================================
-  // ۷. صفحه انیمیشنی موشک در حال پرواز (Rocket Launch Scanner Screen)
+  // ۶. صفحه انیمیشنی موشک در حال پرواز (Rocket Launch Scanner Screen)
   // ===========================================================================
 
   Widget _buildRocketScannerScreen() {
@@ -1265,21 +1319,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     return Stack(
       children: [
-        // ستاره‌های متحرک در پس‌زمینه که حس پرواز سریع موشک به سمت بالا را می‌دهند
         Positioned.fill(
           child: CustomPaint(
             painter: StarfieldPainter(_stars),
           ),
         ),
-
-        // محتوای مرکزی: موشک متحرک + شعله آتشین + وضعیت زنده اسکن
         Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Spacer(flex: 2),
-
-              // هاله و موشک در حال حرکت به بالا
               Transform.translate(
                 offset: Offset(wave * 4.0, -10.0 * wave.abs()),
                 child: Column(
@@ -1298,10 +1347,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ],
                         ),
                       ),
-                      child: const Center(
+                      child: Center(
                         child: Transform.rotate(
-                          angle: -0.785, // چرخش ۴۵ درجه تا نوک موشک صاف به سمت بالا باشد
-                          child: Icon(
+                          angle: -0.785,
+                          child: const Icon(
                             Icons.rocket_launch_rounded,
                             size: 82,
                             color: Color(0xFF00F5D4),
@@ -1309,7 +1358,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ),
                       ),
                     ),
-                    // شعله‌های متحرک آتش در زیر موشک
                     Transform.scale(
                       scaleY: flameScale,
                       scaleX: 0.9 + (0.2 * wave.abs()),
@@ -1344,9 +1392,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ],
                 ),
               ),
-
               const SizedBox(height: 36),
-
               const Text(
                 'LAUNCHING CONNECTION...',
                 style: TextStyle(
@@ -1357,7 +1403,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ),
               const SizedBox(height: 12),
-
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: Text(
@@ -1370,10 +1415,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   textAlign: TextAlign.center,
                 ),
               ),
-
               const Spacer(flex: 2),
-
-              // دکمه لغو اسکن
               TextButton.icon(
                 style: TextButton.styleFrom(
                   foregroundColor: Colors.white70,
@@ -1400,12 +1442,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   // ===========================================================================
-  // ۸. رابط کاربری اصلی
+  // ۷. رابط کاربری اصلی
   // ===========================================================================
 
   @override
   Widget build(BuildContext context) {
-    // وقتی کاربر روی کانکت می‌زند، صفحه انیمیشنی موشک نمایش داده می‌شود
     if (isConnecting) {
       return Scaffold(
         body: SafeArea(
@@ -1426,7 +1467,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 18.0),
           child: Column(
             children: [
-              // ۱. هدر بالا: لوگوی Nivexia + دکمه افزودن ساب‌لینک + باکس پینگ کلیکی
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -1466,8 +1506,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       ),
                     ],
                   ),
-
-                  // باکس پینگ کلیکی: با هر کلیک پینگ را رفرش می‌کند
                   GestureDetector(
                     onTap: _refreshPingOnTap,
                     child: Container(
@@ -1512,10 +1550,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ],
               ),
-
               const Spacer(),
-
-              // ۲. دکمه بزرگ اتصال در مرکز صفحه
               GestureDetector(
                 onTap: _onConnectButtonPressed,
                 child: AnimatedBuilder(
@@ -1573,10 +1608,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   },
                 ),
               ),
-
               const Spacer(),
-
-              // ۳. نمایشگر سرعت دانلود و آپلود
               Row(
                 children: [
                   Expanded(
@@ -1642,10 +1674,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ],
               ),
-
               const SizedBox(height: 14),
-
-              // ۴. نوار وضعیت پایین صفحه
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -1700,7 +1729,6 @@ class StarfieldPainter extends CustomPainter {
       paint.color = Colors.white.withOpacity(star.opacity);
       final double dx = star.x * size.width;
       final double dy = star.y * size.height;
-      // رسم ستاره و ردِ نورانی حرکت به سمت پایین
       canvas.drawCircle(Offset(dx, dy), star.size, paint);
       paint.color = const Color(0xFF00F5D4).withOpacity(star.opacity * 0.4);
       canvas.drawLine(
