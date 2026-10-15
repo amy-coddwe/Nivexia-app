@@ -70,6 +70,27 @@ const List<AppThemePalette> kThemes = [
   ),
 ];
 
+const List<String> kDefaultVipConfigs = [
+  'vless://162ab0b0-75c6-4f2e-9da0-750fb0062b6f@104.21.33.59:443?path=%2F%3Fed%3D2048&security=tls&encryption=none&insecure=0&host=hv-hx90g3xn.pages.dev&fp=chrome&ech=cloudflare-ech.com%2Budp%3A%2F%2F1.1.1.1&type=ws&allowInsecure=0&sni=hv-hx90g3xn.pages.dev#VIP%20-%20Nivexia',
+  'vless://162ab0b0-75c6-4f2e-9da0-750fb0062b6f@188.244.122.103:443?path=%2F%3Fed%3D2048&security=tls&encryption=none&insecure=0&host=hv-hx90g3xn.pages.dev&fp=chrome&ech=cloudflare-ech.com%2Budp%3A%2F%2F1.1.1.1&type=ws&allowInsecure=0&sni=hv-hx90g3xn.pages.dev#VIP%20-%20Nivexia',
+  'vless://162ab0b0-75c6-4f2e-9da0-750fb0062b6f@172.64.34.14:443?path=%2F%3Fed%3D2048&security=tls&encryption=none&insecure=0&host=hv-hx90g3xn.pages.dev&fp=chrome&ech=cloudflare-ech.com%2Budp%3A%2F%2F1.1.1.1&type=ws&allowInsecure=0&sni=hv-hx90g3xn.pages.dev#VIP%20-%20Nivexia',
+  'vless://162ab0b0-75c6-4f2e-9da0-750fb0062b6f@104.24.74.9:443?path=%2F%3Fed%3D2048&security=tls&encryption=none&insecure=0&host=hv-hx90g3xn.pages.dev&fp=chrome&ech=cloudflare-ech.com%2Budp%3A%2F%2F1.1.1.1&type=ws&allowInsecure=0&sni=hv-hx90g3xn.pages.dev#VIP%20-%20Nivexia',
+  'vless://162ab0b0-75c6-4f2e-9da0-750fb0062b6f@162.158.161.252:443?path=%2F%3Fed%3D2048&security=tls&encryption=none&insecure=0&host=hv-hx90g3xn.pages.dev&fp=chrome&ech=cloudflare-ech.com%2Budp%3A%2F%2F1.1.1.1&type=ws&allowInsecure=0&sni=hv-hx90g3xn.pages.dev#VIP%20-%20Nivexia',
+  'vless://162ab0b0-75c6-4f2e-9da0-750fb0062b6f@104.24.74.218:443?path=%2F%3Fed%3D2048&security=tls&encryption=none&insecure=0&host=hv-hx90g3xn.pages.dev&fp=chrome&ech=cloudflare-ech.com%2Budp%3A%2F%2F1.1.1.1&type=ws&allowInsecure=0&sni=hv-hx90g3xn.pages.dev#VIP%20-%20Nivexia',
+  'vless://162ab0b0-75c6-4f2e-9da0-750fb0062b6f@188.244.122.116:443?path=%2F%3Fed%3D2048&security=tls&encryption=none&insecure=0&host=hv-hx90g3xn.pages.dev&fp=chrome&ech=cloudflare-ech.com%2Budp%3A%2F%2F1.1.1.1&type=ws&allowInsecure=0&sni=hv-hx90g3xn.pages.dev#VIP%20-%20Nivexia',
+  'vless://162ab0b0-75c6-4f2e-9da0-750fb0062b6f@188.114.103.1:443?path=%2F%3Fed%3D2048&security=tls&encryption=none&insecure=0&host=hv-hx90g3xn.pages.dev&fp=chrome&ech=cloudflare-ech.com%2Budp%3A%2F%2F1.1.1.1&type=ws&allowInsecure=0&sni=hv-hx90g3xn.pages.dev#VIP%20-%20Nivexia',
+  'vless://162ab0b0-75c6-4f2e-9da0-750fb0062b6f@162.158.172.213:443?path=%2F%3Fed%3D2048&security=tls&encryption=none&insecure=0&host=hv-hx90g3xn.pages.dev&fp=chrome&ech=cloudflare-ech.com%2Budp%3A%2F%2F1.1.1.1&type=ws&allowInsecure=0&sni=hv-hx90g3xn.pages.dev#VIP%20-%20Nivexia',
+  'vless://162ab0b0-75c6-4f2e-9da0-750fb0062b6f@104.24.59.192:443?path=%2F%3Fed%3D2048&security=tls&encryption=none&insecure=0&host=hv-hx90g3xn.pages.dev&fp=chrome&ech=cloudflare-ech.com%2Budp%3A%2F%2F1.1.1.1&type=ws&allowInsecure=0&sni=hv-hx90g3xn.pages.dev#VIP%20-%20Nivexia',
+  'vless://162ab0b0-75c6-4f2e-9da0-750fb0062b6f@104.24.59.28:443?path=%2F%3Fed%3D2048&security=tls&encryption=none&insecure=0&host=hv-hx90g3xn.pages.dev&fp=chrome&ech=cloudflare-ech.com%2Budp%3A%2F%2F1.1.1.1&type=ws&allowInsecure=0&sni=hv-hx90g3xn.pages.dev#VIP%20-%20Nivexia',
+  'vless://162ab0b0-75c6-4f2e-9da0-750fb0062b6f@162.158.172.19:443?path=%2F%3Fed%3D2048&security=tls&encryption=none&insecure=0&host=hv-hx90g3xn.pages.dev&fp=chrome&ech=cloudflare-ech.com%2Budp%3A%2F%2F1.1.1.1&type=ws&allowInsecure=0&sni=hv-hx90g3xn.pages.dev#VIP%20-%20Nivexia',
+  'vless://162ab0b0-75c6-4f2e-9da0-750fb0062b6f@162.158.172.55:443?path=%2F%3Fed%3D2048&security=tls&encryption=none&insecure=0&host=hv-hx90g3xn.pages.dev&fp=chrome&ech=cloudflare-ech.com%2Budp%3A%2F%2F1.1.1.1&type=ws&allowInsecure=0&sni=hv-hx90g3xn.pages.dev#VIP%20-%20Nivexia',
+  'vless://162ab0b0-75c6-4f2e-9da0-750fb0062b6f@162.158.185.163:443?path=%2F%3Fed%3D2048&security=tls&encryption=none&insecure=0&host=hv-hx90g3xn.pages.dev&fp=chrome&ech=cloudflare-ech.com%2Budp%3A%2F%2F1.1.1.1&type=ws&allowInsecure=0&sni=hv-hx90g3xn.pages.dev#VIP%20-%20Nivexia',
+  'vless://162ab0b0-75c6-4f2e-9da0-750fb0062b6f@162.158.164.28:443?path=%2F%3Fed%3D2048&security=tls&encryption=none&insecure=0&host=hv-hx90g3xn.pages.dev&fp=chrome&ech=cloudflare-ech.com%2Budp%3A%2F%2F1.1.1.1&type=ws&allowInsecure=0&sni=hv-hx90g3xn.pages.dev#VIP%20-%20Nivexia',
+  'vless://162ab0b0-75c6-4f2e-9da0-750fb0062b6f@104.24.26.199:443?path=%2F%3Fed%3D2048&security=tls&encryption=none&insecure=0&host=hv-hx90g3xn.pages.dev&fp=chrome&ech=cloudflare-ech.com%2Budp%3A%2F%2F1.1.1.1&type=ws&allowInsecure=0&sni=hv-hx90g3xn.pages.dev#VIP%20-%20Nivexia',
+  'vless://162ab0b0-75c6-4f2e-9da0-750fb0062b6f@104.24.26.137:443?path=%2F%3Fed%3D2048&security=tls&encryption=none&insecure=0&host=hv-hx90g3xn.pages.dev&fp=chrome&ech=cloudflare-ech.com%2Budp%3A%2F%2F1.1.1.1&type=ws&allowInsecure=0&sni=hv-hx90g3xn.pages.dev#VIP%20-%20Nivexia',
+  'vless://162ab0b0-75c6-4f2e-9da0-750fb0062b6f@162.158.164.20:443?path=%2F%3Fed%3D2048&security=tls&encryption=none&insecure=0&host=hv-hx90g3xn.pages.dev&fp=chrome&ech=cloudflare-ech.com%2Budp%3A%2F%2F1.1.1.1&type=ws&allowInsecure=0&sni=hv-hx90g3xn.pages.dev#VIP%20-%20Nivexia',
+];
+
 class NivexiaApp extends StatelessWidget {
   const NivexiaApp({super.key});
 
@@ -89,7 +110,6 @@ class NivexiaApp extends StatelessWidget {
 class ServerNode {
   final String rawUri;
   final String name;
-  final String group;
   final String configJson;
   final String protocol;
   final String address;
@@ -103,7 +123,6 @@ class ServerNode {
   ServerNode({
     required this.rawUri,
     required this.name,
-    required this.group,
     required this.configJson,
     required this.protocol,
     required this.address,
@@ -120,7 +139,6 @@ class ServerNode {
   Map<String, dynamic> toMap() => {
         'rawUri': rawUri,
         'name': name,
-        'group': group,
         'configJson': configJson,
         'protocol': protocol,
         'address': address,
@@ -134,8 +152,7 @@ class ServerNode {
 
   factory ServerNode.fromMap(Map<String, dynamic> map) => ServerNode(
         rawUri: map['rawUri'] ?? '',
-        name: map['name'] ?? 'Server',
-        group: map['group'] ?? 'irancell',
+        name: map['name'] ?? 'VIP - Nivexia',
         configJson: map['configJson'] ?? '',
         protocol: map['protocol'] ?? 'VLESS',
         address: map['address'] ?? '',
@@ -145,20 +162,6 @@ class ServerNode {
         countryName: map['countryName'] ?? 'Unknown',
         tcpPing: map['tcpPing'] ?? -1,
         realPing: map['realPing'] ?? -1,
-      );
-}
-
-class CustomSubEntry {
-  final String input;
-  final String group;
-
-  CustomSubEntry({required this.input, required this.group});
-
-  Map<String, dynamic> toMap() => {'input': input, 'group': group};
-
-  factory CustomSubEntry.fromMap(Map<String, dynamic> map) => CustomSubEntry(
-        input: map['input'] ?? '',
-        group: map['group'] ?? 'irancell',
       );
 }
 
@@ -196,8 +199,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   int _themeIndex = 0;
   AppThemePalette get _theme => kThemes[_themeIndex % kThemes.length];
 
-  String _selectedTab = 'auto';
-
   bool _nativeVpnRunning = false;
   bool isConnected = false;
   bool isConnecting = false;
@@ -210,24 +211,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   int currentPing = -1;
   String statusMessage = 'Ready to connect';
 
-  final List<ServerNode> _irancellServers = [];
-  final List<ServerNode> _mciServers = [];
-  final List<CustomSubEntry> _customSubEntries = [];
+  final List<ServerNode> _servers = [];
+  final List<String> _customSubInputs = [];
   final Map<String, Map<String, String>> _geoCache = {};
 
   ServerNode? _selectedServer;
   ServerNode? _connectedServer;
 
-  final List<String> _githubIrancellUrls = const [
+  final List<String> _githubRemoteFiles = const [
     'https://raw.githubusercontent.com/amy-coddwe/Nivexia-app/main/irancell.txt',
-    'https://ghfast.top/https://raw.githubusercontent.com/amy-coddwe/Nivexia-app/main/irancell.txt',
-    'https://cdn.jsdelivr.net/gh/amy-coddwe/Nivexia-app@main/irancell.txt',
-  ];
-
-  final List<String> _githubMciUrls = const [
     'https://raw.githubusercontent.com/amy-coddwe/Nivexia-app/main/mci.txt',
+    'https://ghfast.top/https://raw.githubusercontent.com/amy-coddwe/Nivexia-app/main/irancell.txt',
     'https://ghfast.top/https://raw.githubusercontent.com/amy-coddwe/Nivexia-app/main/mci.txt',
-    'https://cdn.jsdelivr.net/gh/amy-coddwe/Nivexia-app@main/mci.txt',
   ];
 
   @override
@@ -248,6 +243,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
 
     await _loadSavedState();
+    if (_servers.isEmpty) {
+      _loadBuiltInEighteenServers();
+    }
     await _syncAllConfigsFromRemote(silent: true);
   }
 
@@ -255,6 +253,29 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void dispose() {
     _pulseController.dispose();
     super.dispose();
+  }
+
+  void _loadBuiltInEighteenServers() {
+    final Set<String> seen = {};
+    final List<ServerNode> builtIn = [];
+    for (final raw in kDefaultVipConfigs) {
+      final String clean = raw.trim();
+      if (clean.isEmpty || !seen.add(clean)) continue;
+      final ServerNode? node = _parseConfigToNode(clean);
+      if (node != null) {
+        builtIn.add(node);
+      }
+    }
+    setState(() {
+      _servers
+        ..clear()
+        ..addAll(builtIn);
+      if (_servers.isNotEmpty) {
+        _selectedServer = _servers.first;
+      }
+      statusMessage = 'Ready • ${_servers.length} VIP servers loaded';
+    });
+    _resolveAllServerCountriesInBackground();
   }
 
   Future<File> _getLocalFile(String name) async {
@@ -277,36 +298,33 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Future<void> _loadSavedState() async {
     try {
-      final File stateFile = await _getLocalFile('nivexia_manager_v7.json');
+      final File stateFile = await _getLocalFile('nivexia_ state_v8.json'.replaceAll(' ', ''));
       if (await stateFile.exists()) {
         final Map<String, dynamic> data = jsonDecode(await stateFile.readAsString());
         _themeIndex = data['themeIndex'] ?? 0;
-        _selectedTab = data['selectedTab'] ?? 'auto';
 
         if (data['customSubs'] is List) {
-          _customSubEntries.clear();
+          _customSubInputs.clear();
           for (final item in data['customSubs']) {
-            _customSubEntries.add(
-              CustomSubEntry.fromMap(Map<String, dynamic>.from(item)),
-            );
+            final String s = item.toString().trim();
+            if (s.isNotEmpty && !_customSubInputs.contains(s)) {
+              _customSubInputs.add(s);
+            }
           }
         }
 
-        if (data['irancellServers'] is List) {
-          _irancellServers.clear();
-          for (final item in data['irancellServers']) {
-            _irancellServers.add(
-              ServerNode.fromMap(Map<String, dynamic>.from(item)),
-            );
-          }
-        }
-
-        if (data['mciServers'] is List) {
-          _mciServers.clear();
-          for (final item in data['mciServers']) {
-            _mciServers.add(
-              ServerNode.fromMap(Map<String, dynamic>.from(item)),
-            );
+        if (data['servers'] is List) {
+          _servers.clear();
+          for (final item in data['servers']) {
+            final ServerNode srv = ServerNode.fromMap(Map<String, dynamic>.from(item));
+            final ServerNode? rebuilt = _parseConfigToNode(srv.rawUri);
+            if (rebuilt != null) {
+              rebuilt.countryCode = srv.countryCode;
+              rebuilt.countryName = srv.countryName;
+              rebuilt.tcpPing = srv.tcpPing;
+              rebuilt.realPing = srv.realPing;
+              _servers.add(rebuilt);
+            }
           }
         }
 
@@ -317,13 +335,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Future<void> _saveStateToDisk() async {
     try {
-      final File stateFile = await _getLocalFile('nivexia_manager_v7.json');
+      final File stateFile = await _getLocalFile('nivexia_state_v8.json');
       final Map<String, dynamic> data = {
         'themeIndex': _themeIndex,
-        'selectedTab': _selectedTab,
-        'customSubs': _customSubEntries.map((e) => e.toMap()).toList(),
-        'irancellServers': _irancellServers.map((e) => e.toMap()).toList(),
-        'mciServers': _mciServers.map((e) => e.toMap()).toList(),
+        'customSubs': _customSubInputs,
+        'servers': _servers.map((e) => e.toMap()).toList(),
       };
       await stateFile.writeAsString(jsonEncode(data));
     } catch (_) {}
@@ -344,6 +360,218 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
+  Map<String, String> _parseQueryParams(String query) {
+    final Map<String, String> result = {};
+    for (final part in query.split('&')) {
+      if (part.isEmpty) continue;
+      final int idx = part.indexOf('=');
+      if (idx == -1) {
+        result[Uri.decodeComponent(part)] = '';
+      } else {
+        final String k = Uri.decodeComponent(part.substring(0, idx));
+        final String v = Uri.decodeComponent(part.substring(idx + 1));
+        result[k] = v;
+      }
+    }
+    return result;
+  }
+
+  ServerNode? _buildCustomVlessNode(String rawUri) {
+    try {
+      final String withoutScheme = rawUri.substring(8);
+      final int hashIndex = withoutScheme.indexOf('#');
+      final String mainAndQuery =
+          hashIndex != -1 ? withoutScheme.substring(0, hashIndex) : withoutScheme;
+      final String rawRemark =
+          hashIndex != -1 ? withoutScheme.substring(hashIndex + 1) : 'VIP - Nivexia';
+      String remark = 'VIP - Nivexia';
+      try {
+        remark = Uri.decodeComponent(rawRemark).trim();
+        if (remark.isEmpty) remark = 'VIP - Nivexia';
+      } catch (_) {
+        remark = rawRemark.trim();
+      }
+
+      final int qIndex = mainAndQuery.indexOf('?');
+      final String userAndHost =
+          qIndex != -1 ? mainAndQuery.substring(0, qIndex) : mainAndQuery;
+      final String queryString =
+          qIndex != -1 ? mainAndQuery.substring(qIndex + 1) : '';
+
+      final int atIndex = userAndHost.lastIndexOf('@');
+      if (atIndex == -1) return null;
+
+      final String uuid = userAndHost.substring(0, atIndex).trim();
+      final String hostPort = userAndHost.substring(atIndex + 1).trim();
+
+      final int colonIndex = hostPort.lastIndexOf(':');
+      final String address =
+          colonIndex != -1 ? hostPort.substring(0, colonIndex).trim() : hostPort;
+      final int port = colonIndex != -1
+          ? (int.tryParse(hostPort.substring(colonIndex + 1).trim()) ?? 443)
+          : 443;
+
+      if (address.isEmpty || uuid.isEmpty) return null;
+
+      final Map<String, String> params = _parseQueryParams(queryString);
+      final String network = (params['type'] ?? 'ws').toLowerCase();
+      final String security = (params['security'] ?? 'tls').toLowerCase();
+      final String hostHeader = (params['host'] ?? params['sni'] ?? '').trim();
+      final String sni = (params['sni'] ?? params['host'] ?? address).trim();
+      final String fp = (params['fp'] ?? 'chrome').trim();
+      final String rawPath = (params['path'] ?? '/').trim();
+      final String encryption = (params['encryption'] ?? 'none').trim();
+      final String flow = (params['flow'] ?? '').trim();
+
+      final Map<String, dynamic> userMap = {
+        "id": uuid,
+        "encryption": encryption.isEmpty ? "none" : encryption,
+        "level": 8,
+      };
+      if (flow.isNotEmpty) {
+        userMap["flow"] = flow;
+      }
+
+      final Map<String, dynamic> streamSettings = {
+        "network": network,
+        "security": security,
+      };
+
+      if (network == 'ws') {
+        streamSettings["wsSettings"] = {
+          "path": rawPath.isEmpty ? "/" : rawPath,
+          "headers": hostHeader.isNotEmpty ? {"Host": hostHeader} : {},
+        };
+      } else if (network == 'grpc') {
+        streamSettings["grpcSettings"] = {
+          "serviceName": params['serviceName'] ?? rawPath,
+          "multiMode": params['mode'] == 'multi',
+        };
+      }
+
+      if (security == 'tls') {
+        final Map<String, dynamic> tlsSettings = {
+          "allowInsecure": true,
+          "serverName": sni,
+          "fingerprint": fp.isEmpty ? "chrome" : fp,
+          "alpn": network == 'ws' ? ["http/1.1"] : ["h2", "http/1.1"],
+        };
+        streamSettings["tlsSettings"] = tlsSettings;
+      } else if (security == 'reality') {
+        streamSettings["realitySettings"] = {
+          "serverName": sni,
+          "fingerprint": fp.isEmpty ? "chrome" : fp,
+          "show": false,
+          "publicKey": params['pbk'] ?? '',
+          "shortId": params['sid'] ?? '',
+          "spiderX": params['spx'] ?? '/',
+        };
+      }
+
+      streamSettings["sockopt"] = {
+        "tcpNoDelay": true,
+        "domainStrategy": "UseIPv4",
+      };
+
+      final Map<String, dynamic> fullConfig = {
+        "log": {"loglevel": "warning"},
+        "dns": {
+          "hosts": {
+            "domain:googleapis.cn": "googleapis.com",
+            "dns.google": ["8.8.8.8", "8.8.4.4"],
+            "cloudflare-dns.com": ["1.1.1.1", "1.0.0.1"],
+          },
+          "servers": [
+            "https://1.1.1.1/dns-query",
+            "1.1.1.1",
+            "8.8.8.8",
+          ]
+        },
+        "inbounds": [
+          {
+            "tag": "socks",
+            "port": 10808,
+            "listen": "127.0.0.1",
+            "protocol": "socks",
+            "sniffing": {
+              "enabled": true,
+              "destOverride": ["http", "tls"],
+              "routeOnly": false
+            },
+            "settings": {"auth": "noauth", "udp": true, "userLevel": 8}
+          },
+          {
+            "tag": "http",
+            "port": 10809,
+            "listen": "127.0.0.1",
+            "protocol": "http",
+            "sniffing": {
+              "enabled": true,
+              "destOverride": ["http", "tls"],
+              "routeOnly": false
+            },
+            "settings": {"userLevel": 8}
+          }
+        ],
+        "outbounds": [
+          {
+            "tag": "proxy",
+            "protocol": "vless",
+            "settings": {
+              "vnext": [
+                {
+                  "address": address,
+                  "port": port,
+                  "users": [userMap]
+                }
+              ]
+            },
+            "streamSettings": streamSettings,
+            "mux": {"enabled": false, "concurrency": -1}
+          },
+          {
+            "tag": "direct",
+            "protocol": "freedom",
+            "settings": {"domainStrategy": "UseIP"}
+          },
+          {
+            "tag": "block",
+            "protocol": "blackhole",
+            "settings": {
+              "response": {"type": "none"}
+            }
+          }
+        ],
+        "routing": {
+          "domainStrategy": "IPIfNonMatch",
+          "rules": [
+            {
+              "type": "field",
+              "ip": ["geoip:private"],
+              "outboundTag": "direct"
+            }
+          ]
+        }
+      };
+
+      final String detectedCode = _guessCountryCodeFromName(remark);
+
+      return ServerNode(
+        rawUri: rawUri,
+        name: remark,
+        configJson: jsonEncode(fullConfig),
+        protocol: 'VLESS',
+        address: address,
+        port: port,
+        localHttpPort: 10809,
+        countryCode: detectedCode,
+        countryName: detectedCode == 'UN' ? address : detectedCode,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   String _extractRemarkName(String uri, V2RayURL parser) {
     try {
       if (uri.contains('#')) {
@@ -358,7 +586,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         return uri.split('#').last.trim();
       }
     }
-    return '${uri.split('://').first.toUpperCase()} Server';
+    return 'VIP - Nivexia';
   }
 
   String? _convertSsrToStandardSs(String ssrUri) {
@@ -417,9 +645,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return ssUri;
   }
 
-  ServerNode? _parseConfigToNode(String rawUri, String group) {
+  ServerNode? _parseConfigToNode(String rawUri) {
     try {
       String uri = rawUri.trim();
+      if (uri.startsWith('vless://')) {
+        final ServerNode? customVless = _buildCustomVlessNode(uri);
+        if (customVless != null) return customVless;
+      }
+
       if (uri.startsWith('ssr://')) {
         final String? conv = _convertSsrToStandardSs(uri);
         if (conv == null) return null;
@@ -451,18 +684,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         }
       }
 
-      if (parser.streamSetting['realitySettings'] is Map) {
-        final Map rl = parser.streamSetting['realitySettings'];
-        if (rl['spiderX'] is String) {
-          try {
-            rl['spiderX'] = Uri.decodeComponent(rl['spiderX']);
-          } catch (_) {}
-        }
-      }
-
       if (parser.streamSetting['security'] == 'tls' &&
           parser.streamSetting['tlsSettings'] is Map) {
         parser.streamSetting['tlsSettings']['allowInsecure'] = true;
+        parser.streamSetting['tlsSettings']['alpn'] = ['http/1.1'];
       }
 
       final Map<String, dynamic> fullCfg =
@@ -500,14 +725,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
       final String remarkName = _extractRemarkName(uri, parser);
       final String detectedCode = _guessCountryCodeFromName(remarkName);
-
-      String proto = uri.split('://').first.toUpperCase();
-      if (uri.contains('security=reality')) proto = 'REALITY';
+      final String proto = uri.split('://').first.toUpperCase();
 
       return ServerNode(
         rawUri: uri,
         name: remarkName,
-        group: group,
         configJson: jsonEncode(fullCfg),
         protocol: proto,
         address: host,
@@ -526,7 +748,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       final http.Response res = await http.get(
         Uri.parse(url.trim()),
         headers: {'User-Agent': 'v2rayNG/1.8.23'},
-      ).timeout(const Duration(seconds: 8));
+      ).timeout(const Duration(seconds: 7));
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
         final String body = utf8.decode(res.bodyBytes, allowMalformed: true).trim();
@@ -597,96 +819,56 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     if (mounted) {
       setState(() {
         isSyncingSubs = true;
-        if (!silent) statusMessage = 'Updating Irancell & MCI configs...';
+        if (!silent) statusMessage = 'Updating server list...';
       });
     }
 
     try {
-      final Map<String, ServerNode> oldByUri = {};
-      for (final s in _irancellServers) {
-        oldByUri[s.rawUri] = s;
-      }
-      for (final s in _mciServers) {
-        oldByUri[s.rawUri] = s;
+      final Map<String, ServerNode> oldByAddress = {};
+      for (final s in _servers) {
+        oldByAddress['${s.address}:${s.port}'] = s;
       }
 
-      String irancellRaw = '';
-      for (final url in _githubIrancellUrls) {
+      final List<String> collectedUris = [];
+
+      for (final url in _githubRemoteFiles) {
         final String txt = await _fetchUrlText(url);
         if (txt.isNotEmpty) {
-          irancellRaw = txt;
-          break;
+          collectedUris.addAll(await _extractAllConfigsFromRawOrSub(txt));
         }
       }
 
-      String mciRaw = '';
-      for (final url in _githubMciUrls) {
-        final String txt = await _fetchUrlText(url);
-        if (txt.isNotEmpty) {
-          mciRaw = txt;
-          break;
-        }
+      for (final custom in _customSubInputs) {
+        collectedUris.addAll(await _extractAllConfigsFromRawOrSub(custom));
       }
 
-      final List<String> newIrancellUris = [];
-      final List<String> newMciUris = [];
-
-      if (irancellRaw.isNotEmpty) {
-        newIrancellUris.addAll(await _extractAllConfigsFromRawOrSub(irancellRaw));
-      }
-      if (mciRaw.isNotEmpty) {
-        newMciUris.addAll(await _extractAllConfigsFromRawOrSub(mciRaw));
+      if (collectedUris.isEmpty) {
+        collectedUris.addAll(kDefaultVipConfigs);
       }
 
-      for (final entry in _customSubEntries) {
-        final List<String> extracted = await _extractAllConfigsFromRawOrSub(entry.input);
-        if (entry.group == 'mci') {
-          newMciUris.addAll(extracted);
-        } else {
-          newIrancellUris.addAll(extracted);
-        }
-      }
+      final List<ServerNode> parsedNodes = [];
+      final Set<String> seenAddresses = {};
 
-      if (newIrancellUris.isNotEmpty) {
-        final List<ServerNode> parsedIrancell = [];
-        final Set<String> seen = {};
-        for (final u in newIrancellUris) {
-          if (!seen.add(u)) continue;
-          final ServerNode? node = _parseConfigToNode(u, 'irancell');
-          if (node != null) {
-            if (oldByUri.containsKey(u)) {
-              node.countryCode = oldByUri[u]!.countryCode;
-              node.countryName = oldByUri[u]!.countryName;
-              node.tcpPing = oldByUri[u]!.tcpPing;
-              node.realPing = oldByUri[u]!.realPing;
-            }
-            parsedIrancell.add(node);
+      for (final u in collectedUris) {
+        final ServerNode? node = _parseConfigToNode(u);
+        if (node != null) {
+          final String key = '${node.address}:${node.port}';
+          if (!seenAddresses.add(key)) continue;
+          if (oldByAddress.containsKey(key)) {
+            node.countryCode = oldByAddress[key]!.countryCode;
+            node.countryName = oldByAddress[key]!.countryName;
+            node.tcpPing = oldByAddress[key]!.tcpPing;
+            node.realPing = oldByAddress[key]!.realPing;
           }
+          parsedNodes.add(node);
         }
-        _irancellServers
-          ..clear()
-          ..addAll(parsedIrancell);
       }
 
-      if (newMciUris.isNotEmpty) {
-        final List<ServerNode> parsedMci = [];
-        final Set<String> seen = {};
-        for (final u in newMciUris) {
-          if (!seen.add(u)) continue;
-          final ServerNode? node = _parseConfigToNode(u, 'mci');
-          if (node != null) {
-            if (oldByUri.containsKey(u)) {
-              node.countryCode = oldByUri[u]!.countryCode;
-              node.countryName = oldByUri[u]!.countryName;
-              node.tcpPing = oldByUri[u]!.tcpPing;
-              node.realPing = oldByUri[u]!.realPing;
-            }
-            parsedMci.add(node);
-          }
-        }
-        _mciServers
+      if (parsedNodes.isNotEmpty) {
+        _servers
           ..clear()
-          ..addAll(parsedMci);
+          ..addAll(parsedNodes);
+        _selectedServer ??= _servers.first;
       }
 
       await _saveStateToDisk();
@@ -696,11 +878,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     if (mounted) {
       setState(() {
         isSyncingSubs = false;
-        final int total = _irancellServers.length + _mciServers.length;
         if (!isConnected) {
-          statusMessage = total > 0
-              ? 'Ready • $total servers loaded'
-              : 'No servers yet • Add in GitHub or tap +';
+          statusMessage = 'Ready • ${_servers.length} servers available';
         }
       });
     }
@@ -717,33 +896,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       'NETHERLANDS': 'NL',
       'US': 'US',
       'USA': 'US',
-      'AMERICA': 'US',
       'GB': 'GB',
       'UK': 'GB',
-      'ENGLAND': 'GB',
       'FR': 'FR',
       'FRANCE': 'FR',
       'FI': 'FI',
-      'FINLAND': 'FI',
       'SE': 'SE',
-      'SWEDEN': 'SE',
       'AE': 'AE',
-      'UAE': 'AE',
-      'DUBAI': 'AE',
       'CA': 'CA',
-      'CANADA': 'CA',
       'SG': 'SG',
-      'SINGAPORE': 'SG',
       'JP': 'JP',
-      'JAPAN': 'JP',
       'RU': 'RU',
-      'RUSSIA': 'RU',
-      'PL': 'PL',
-      'POLAND': 'PL',
-      'AT': 'AT',
-      'AUSTRIA': 'AT',
-      'CH': 'CH',
-      'SWISS': 'CH',
     };
 
     for (final entry in keywords.entries) {
@@ -811,8 +974,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _resolveAllServerCountriesInBackground() async {
-    final List<ServerNode> all = [..._irancellServers, ..._mciServers];
-    for (final srv in all) {
+    for (final srv in _servers) {
       await _resolveSingleServerCountry(srv);
     }
     await _saveStateToDisk();
@@ -905,9 +1067,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             config: srv.configJson,
             url: 'http://cp.cloudflare.com/generate_204',
           )
-          .timeout(const Duration(milliseconds: 3000), onTimeout: () => -1);
+          .timeout(const Duration(milliseconds: 3200), onTimeout: () => -1);
 
-      if (delay > 0 && delay < 3500) {
+      if (delay > 0 && delay < 4000) {
         return delay;
       }
     } catch (_) {}
@@ -915,23 +1077,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return tcp;
   }
 
-  List<ServerNode> _getCurrentTabServers() {
-    if (_selectedTab == 'irancell') return _irancellServers;
-    if (_selectedTab == 'mci') return _mciServers;
-    return [..._irancellServers, ..._mciServers];
-  }
-
-  Future<void> _runTcpPingForCurrentTab() async {
-    if (isTestingTcp || isTestingReal) return;
-    final List<ServerNode> list = _getCurrentTabServers();
-    if (list.isEmpty) return;
+  Future<void> _runTcpPingAll() async {
+    if (isTestingTcp || isTestingReal || _servers.isEmpty) return;
 
     setState(() {
       isTestingTcp = true;
       statusMessage = 'Running TCP Ping test...';
     });
 
-    await Future.wait(list.map((srv) async {
+    await Future.wait(_servers.map((srv) async {
       final int ms = await _measureTcpPing(srv.address, srv.port);
       srv.tcpPing = ms;
       if (mounted) setState(() {});
@@ -946,17 +1100,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  Future<void> _runRealTestForCurrentTab() async {
-    if (isTestingReal || isTestingTcp) return;
-    final List<ServerNode> list = _getCurrentTabServers();
-    if (list.isEmpty) return;
+  Future<void> _runRealTestAll() async {
+    if (isTestingReal || isTestingTcp || _servers.isEmpty) return;
 
     setState(() {
       isTestingReal = true;
       statusMessage = 'Running Real Config test...';
     });
 
-    for (final srv in list) {
+    for (final srv in _servers) {
       if (!mounted) break;
       final int realMs = await _measureRealCorePing(srv);
       srv.realPing = realMs;
@@ -978,7 +1130,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     try {
       int p = -1;
-      if (isConnected && _connectedServer?.rawUri == srv.rawUri) {
+      if (isConnected && _connectedServer?.address == srv.address) {
         try {
           p = await v2ray
               .getConnectedServerDelay()
@@ -994,10 +1146,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           if (p > 0) {
             srv.realPing = p;
             srv.tcpPing = p;
-            if (_connectedServer?.rawUri == srv.rawUri ||
-                _selectedServer?.rawUri == srv.rawUri) {
-              currentPing = p;
-            }
+            currentPing = p;
           }
         });
       }
@@ -1009,12 +1158,29 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
+  Future<void> _triggerTunnelTrafficWarmup() async {
+    HttpClient? client;
+    try {
+      client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 3);
+      client.findProxy = (uri) => "PROXY 127.0.0.1:10809";
+      final req = await client
+          .getUrl(Uri.parse('http://cp.cloudflare.com/generate_204'))
+          .timeout(const Duration(seconds: 3));
+      final res = await req.close().timeout(const Duration(seconds: 3));
+      await res.drain();
+      client.close(force: true);
+    } catch (_) {
+      client?.close(force: true);
+    }
+  }
+
   Future<bool> _startVpnWithNode(ServerNode node) async {
     try {
       try {
         await v2ray.stopV2Ray();
       } catch (_) {}
-      await Future.delayed(const Duration(milliseconds: 300));
+      await Future.delayed(const Duration(milliseconds: 350));
 
       _nativeVpnRunning = false;
       await v2ray.startV2Ray(
@@ -1026,7 +1192,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       );
 
       int waited = 0;
-      while (!_nativeVpnRunning && waited < 3200) {
+      while (!_nativeVpnRunning && waited < 3500) {
         if (_userCancelled) {
           await v2ray.stopV2Ray();
           return false;
@@ -1044,6 +1210,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       _selectedServer = node;
 
       _resolveSingleServerCountry(node);
+      _triggerTunnelTrafficWarmup();
 
       if (mounted) {
         setState(() {
@@ -1087,11 +1254,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       isConnecting = true;
       isConnected = false;
       _userCancelled = false;
-      statusMessage = 'Testing configs & connecting...';
+      statusMessage = 'Testing & connecting...';
     });
 
-    if (_irancellServers.isEmpty && _mciServers.isEmpty) {
-      await _syncAllConfigsFromRemote(silent: true);
+    if (_servers.isEmpty) {
+      _loadBuiltInEighteenServers();
     }
 
     if (specificServer != null) {
@@ -1107,20 +1274,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       return;
     }
 
-    final List<ServerNode> candidates = _selectedTab == 'auto'
-        ? [..._irancellServers, ..._mciServers]
-        : (_selectedServer != null ? [_selectedServer!] : _getCurrentTabServers());
-
-    if (candidates.isEmpty) {
-      setState(() {
-        isConnecting = false;
-        statusMessage = 'No configs found! Add configs via + or GitHub.';
-      });
-      return;
-    }
-
     final List<ServerNode> alive = [];
-    await Future.wait(candidates.map((srv) async {
+    await Future.wait(_servers.map((srv) async {
       final int tcp = await _measureTcpPing(srv.address, srv.port);
       if (tcp > 0) {
         srv.tcpPing = tcp;
@@ -1144,7 +1299,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       if (_userCancelled) break;
       if (mounted) {
         setState(() {
-          statusMessage = 'Testing ${candidate.name} (${candidate.tcpPing} ms)...';
+          statusMessage = 'Connecting to ${candidate.name} (${candidate.tcpPing} ms)...';
         });
       }
 
@@ -1167,7 +1322,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   void _openAddCustomSubSheet() {
     final TextEditingController inputCtrl = TextEditingController();
-    String targetGroup = _selectedTab == 'mci' ? 'mci' : 'irancell';
     bool isAdding = false;
     String feedbackText = '';
 
@@ -1211,33 +1365,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     ],
                   ),
                   const Text(
-                    'Paste a Subscription URL (https://...) or configs (vless://, vmess://, ss://, trojan://) and select its operator group:',
+                    'Paste a Subscription URL (https://...) or configs (vless://, vmess://, ss://, trojan://):',
                     style: TextStyle(fontSize: 11.5, color: Colors.white60),
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Text(
-                        'Target Group: ',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(width: 8),
-                      ChoiceChip(
-                        label: const Text('Irancell'),
-                        selected: targetGroup == 'irancell',
-                        selectedColor: _theme.primary.withOpacity(0.25),
-                        onSelected: (_) => setModalState(() => targetGroup = 'irancell'),
-                      ),
-                      const SizedBox(width: 8),
-                      ChoiceChip(
-                        label: const Text('MCI'),
-                        selected: targetGroup == 'mci',
-                        selectedColor: _theme.primary.withOpacity(0.25),
-                        onSelected: (_) => setModalState(() => targetGroup = 'mci'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
                   TextField(
                     controller: inputCtrl,
                     maxLines: 3,
@@ -1295,22 +1426,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                   await _extractAllConfigsFromRawOrSub(raw);
 
                               int addedCount = 0;
-                              final List<ServerNode> targetList =
-                                  targetGroup == 'mci' ? _mciServers : _irancellServers;
-
                               for (final u in extractedUris) {
-                                if (targetList.any((s) => s.rawUri == u)) continue;
-                                final ServerNode? node = _parseConfigToNode(u, targetGroup);
-                                if (node != null) {
-                                  targetList.add(node);
+                                final ServerNode? node = _parseConfigToNode(u);
+                                if (node != null &&
+                                    !_servers.any(
+                                        (s) => s.address == node.address && s.port == node.port)) {
+                                  _servers.add(node);
                                   addedCount++;
                                 }
                               }
 
-                              if (extractedUris.isNotEmpty) {
-                                _customSubEntries.add(
-                                  CustomSubEntry(input: raw, group: targetGroup),
-                                );
+                              if (extractedUris.isNotEmpty && !_customSubInputs.contains(raw)) {
+                                _customSubInputs.add(raw);
                                 await _saveStateToDisk();
                                 _resolveAllServerCountriesInBackground();
                               }
@@ -1319,7 +1446,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 isAdding = false;
                                 feedbackText = extractedUris.isEmpty
                                     ? 'No valid configs found in input!'
-                                    : 'Added $addedCount config(s) to ${targetGroup.toUpperCase()}!';
+                                    : 'Added $addedCount new config(s)!';
                               });
                               inputCtrl.clear();
                               if (mounted) setState(() {});
@@ -1363,8 +1490,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final Color activeColor = isConnected
         ? _theme.primary
         : (isConnecting ? Colors.amberAccent : _theme.secondary);
-
-    final List<ServerNode> visibleServers = _getCurrentTabServers();
 
     return Scaffold(
       backgroundColor: _theme.bg,
@@ -1439,7 +1564,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     onTap: () {
                       final ServerNode? target = _connectedServer ??
                           _selectedServer ??
-                          (visibleServers.isNotEmpty ? visibleServers.first : null);
+                          (_servers.isNotEmpty ? _servers.first : null);
                       if (target != null) {
                         _refreshSingleServerPing(target);
                       }
@@ -1589,7 +1714,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                       Text(
                                         isConnected && _connectedServer != null
                                             ? '${_connectedServer!.countryName} • ${currentPing > 0 ? "$currentPing ms" : "Tap to ping"}'
-                                            : 'Mode: ${_selectedTab.toUpperCase()}',
+                                            : '${_servers.length} VIP Servers Ready',
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
@@ -1677,39 +1802,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ],
               ),
               const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: _theme.card,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.white10),
-                ),
-                child: Row(
-                  children: [
-                    _buildGroupTabButton(
-                      id: 'auto',
-                      title: 'AUTO (${_irancellServers.length + _mciServers.length})',
-                      icon: Icons.auto_awesome_rounded,
-                    ),
-                    _buildGroupTabButton(
-                      id: 'irancell',
-                      title: 'IRANCELL (${_irancellServers.length})',
-                      icon: Icons.sim_card_rounded,
-                    ),
-                    _buildGroupTabButton(
-                      id: 'mci',
-                      title: 'MCI (${_mciServers.length})',
-                      icon: Icons.network_cell_rounded,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'SERVERS LIST',
+                    'SERVERS (${_servers.length})',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w900,
@@ -1720,7 +1817,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   Row(
                     children: [
                       InkWell(
-                        onTap: _runTcpPingForCurrentTab,
+                        onTap: _runTcpPingAll,
                         borderRadius: BorderRadius.circular(10),
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -1757,7 +1854,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       ),
                       const SizedBox(width: 8),
                       InkWell(
-                        onTap: _runRealTestForCurrentTab,
+                        onTap: _runRealTestAll,
                         borderRadius: BorderRadius.circular(10),
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -1798,223 +1895,127 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
               const SizedBox(height: 8),
               Expanded(
-                child: visibleServers.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.dns_outlined, size: 42, color: Colors.grey.shade700),
-                            const SizedBox(height: 10),
-                            Text(
-                              'No configs in ${_selectedTab.toUpperCase()} group yet',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white60,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              'Add configs to irancell.txt / mci.txt in GitHub or tap + above',
-                              style: TextStyle(fontSize: 11, color: Colors.white38),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
+                child: ListView.separated(
+                  itemCount: _servers.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final ServerNode srv = _servers[index];
+                    final bool isThisConnected =
+                        isConnected && _connectedServer?.address == srv.address;
+                    final bool isThisSelected =
+                        _selectedServer?.address == srv.address;
+
+                    final int pingVal = srv.displayPing;
+                    final Color pingColor = pingVal <= 0
+                        ? Colors.white38
+                        : (pingVal < 250
+                            ? Colors.greenAccent
+                            : (pingVal < 600 ? Colors.amberAccent : Colors.redAccent));
+
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _selectedServer = srv;
+                          if (srv.displayPing > 0) {
+                            currentPing = srv.displayPing;
+                          }
+                        });
+                        _onConnectButtonPressed(specificServer: srv);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
                         ),
-                      )
-                    : ListView.separated(
-                        itemCount: visibleServers.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (context, index) {
-                          final ServerNode srv = visibleServers[index];
-                          final bool isThisConnected =
-                              isConnected && _connectedServer?.rawUri == srv.rawUri;
-                          final bool isThisSelected =
-                              _selectedServer?.rawUri == srv.rawUri;
-
-                          final int pingVal = srv.displayPing;
-                          final Color pingColor = pingVal <= 0
-                              ? Colors.white38
-                              : (pingVal < 250
-                                  ? Colors.greenAccent
-                                  : (pingVal < 600 ? Colors.amberAccent : Colors.redAccent));
-
-                          return GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _selectedServer = srv;
-                                if (srv.displayPing > 0) {
-                                  currentPing = srv.displayPing;
-                                }
-                              });
-                              _onConnectButtonPressed(specificServer: srv);
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isThisConnected
-                                    ? _theme.primary.withOpacity(0.12)
-                                    : _theme.card,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: isThisConnected
-                                      ? _theme.primary
-                                      : (isThisSelected
-                                          ? _theme.primary.withOpacity(0.45)
-                                          : Colors.white10),
-                                  width: isThisConnected ? 1.8 : 1.0,
-                                ),
-                              ),
-                              child: Row(
+                        decoration: BoxDecoration(
+                          color: isThisConnected
+                              ? _theme.primary.withOpacity(0.12)
+                              : _theme.card,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: isThisConnected
+                                ? _theme.primary
+                                : (isThisSelected
+                                    ? _theme.primary.withOpacity(0.45)
+                                    : Colors.white10),
+                            width: isThisConnected ? 1.8 : 1.0,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            _buildHighQualityFlag(srv.countryCode, size: 34),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _buildHighQualityFlag(srv.countryCode, size: 34),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          srv.name,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 13.5,
-                                            fontWeight: FontWeight.w800,
-                                            color: isThisConnected
-                                                ? _theme.primary
-                                                : Colors.white,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 3),
-                                        Row(
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 6,
-                                                vertical: 1.5,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: _theme.surface,
-                                                borderRadius: BorderRadius.circular(6),
-                                              ),
-                                              child: Text(
-                                                srv.group.toUpperCase(),
-                                                style: TextStyle(
-                                                  fontSize: 9,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: _theme.primary,
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 6),
-                                            Flexible(
-                                              child: Text(
-                                                srv.countryCode != 'UN'
-                                                    ? srv.countryName
-                                                    : 'Tap ping to detect',
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  fontSize: 10.5,
-                                                  color: Colors.white54,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
+                                  Text(
+                                    srv.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: isThisConnected
+                                          ? _theme.primary
+                                          : Colors.white,
                                     ),
                                   ),
-                                  GestureDetector(
-                                    onTap: () => _refreshSingleServerPing(srv),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 6,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: _theme.surface,
-                                        borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(
-                                          color: pingColor.withOpacity(0.4),
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.bolt_rounded,
-                                            size: 14,
-                                            color: pingColor,
-                                          ),
-                                          const SizedBox(width: 3),
-                                          Text(
-                                            pingVal > 0 ? '$pingVal ms' : 'Ping',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w800,
-                                              color: pingColor,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    srv.countryCode != 'UN'
+                                        ? '${srv.countryName} (${srv.address})'
+                                        : srv.address,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 10.5,
+                                      color: Colors.white54,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                          );
-                        },
+                            GestureDetector(
+                              onTap: () => _refreshSingleServerPing(srv),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _theme.surface,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: pingColor.withOpacity(0.4),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.bolt_rounded,
+                                      size: 14,
+                                      color: pingColor,
+                                    ),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      pingVal > 0 ? '$pingVal ms' : 'Ping',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                        color: pingColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGroupTabButton({
-    required String id,
-    required String title,
-    required IconData icon,
-  }) {
-    final bool selected = _selectedTab == id;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          setState(() => _selectedTab = id);
-          _saveStateToDisk();
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: selected ? _theme.primary : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 14,
-                color: selected ? Colors.black : Colors.white70,
-              ),
-              const SizedBox(width: 5),
-              Flexible(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w900,
-                    color: selected ? Colors.black : Colors.white70,
-                  ),
+                    );
+                  },
                 ),
               ),
             ],
