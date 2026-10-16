@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_v2ray_client/flutter_v2ray.dart';
@@ -129,7 +130,6 @@ class ServerNode {
   final String rawUri;
   final String name;
   String configJson;
-  final List<String> configVariants;
   final String protocol;
   final String address;
   final int port;
@@ -142,7 +142,6 @@ class ServerNode {
     required this.rawUri,
     required this.name,
     required this.configJson,
-    required this.configVariants,
     required this.protocol,
     required this.address,
     required this.port,
@@ -210,9 +209,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   bool isTestingReal = false;
   bool isRefreshingPing = false;
   bool _userCancelled = false;
+  bool _cancelRealTest = false;
+
+  // Auto mode is selected by default when the user opens the app
+  bool _isAutoMode = true;
 
   int currentPing = -1;
-  String statusMessage = 'Ready to connect';
+  String statusMessage = 'Ready • Auto Mode Selected';
 
   final List<ServerNode> _servers = [];
   final List<String> _customSubInputs = [];
@@ -249,6 +252,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     if (_servers.isEmpty) {
       _loadBuiltInEighteenServers();
     }
+    setState(() {
+      _isAutoMode = true;
+      _selectedServer = null;
+    });
     await _syncAllConfigsFromRemote(silent: true);
   }
 
@@ -273,10 +280,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       _servers
         ..clear()
         ..addAll(builtIn);
-      if (_servers.isNotEmpty) {
-        _selectedServer = _servers.first;
-      }
-      statusMessage = '${_servers.length} VIP servers ready';
+      _isAutoMode = true;
+      _selectedServer = null;
+      statusMessage = 'Auto Mode • ${_servers.length} VIP servers ready';
     });
     _resolveAllServerCountriesInBackground();
   }
@@ -301,7 +307,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Future<void> _loadSavedState() async {
     try {
-      final File stateFile = await _getLocalFile('nivexia_state_v9.json');
+      final File stateFile = await _getLocalFile('nivexia_state_v10.json');
       if (await stateFile.exists()) {
         final Map<String, dynamic> data = jsonDecode(await stateFile.readAsString());
         _themeIndex = data['themeIndex'] ?? 0;
@@ -332,9 +338,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           }
         }
 
-        if (_servers.isNotEmpty) {
-          _selectedServer = _servers.first;
-        }
         if (mounted) setState(() {});
       }
     } catch (_) {}
@@ -342,7 +345,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Future<void> _saveStateToDisk() async {
     try {
-      final File stateFile = await _getLocalFile('nivexia_state_v9.json');
+      final File stateFile = await _getLocalFile('nivexia_state_v10.json');
       final Map<String, dynamic> data = {
         'themeIndex': _themeIndex,
         'customSubs': _customSubInputs,
@@ -572,6 +575,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             if (net == 'ws') {
               tls['alpn'] = ['http/1.1'];
             }
+            if (echParam.isNotEmpty) {
+              tls['echConfigList'] = echParam;
+            }
             stream['tlsSettings'] = tls;
           }
 
@@ -581,71 +587,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         (baseCfg['outbounds'] as List)[0] = mainOutbound;
       }
 
-      // 1. Variant A: TLS Hello Fragmentation (bypasses SNI DPI filtering on pages.dev)
-      final Map<String, dynamic> fragCfg =
-          jsonDecode(jsonEncode(baseCfg)) as Map<String, dynamic>;
-      if (fragCfg['outbounds'] is List && (fragCfg['outbounds'] as List).isNotEmpty) {
-        final Map<String, dynamic> out0 = (fragCfg['outbounds'] as List)[0];
-        if (out0['streamSettings'] is Map) {
-          out0['streamSettings']['sockopt'] = {
-            "tcpNoDelay": true,
-            "dialerProxy": "fragment"
-          };
-        }
-        (fragCfg['outbounds'] as List).add({
-          "tag": "fragment",
-          "protocol": "freedom",
-          "settings": {
-            "domainStrategy": "AsIs",
-            "fragment": {
-              "packets": "tlshello",
-              "length": "10-20",
-              "interval": "10-20"
-            }
-          },
-          "streamSettings": {
-            "sockopt": {"tcpNoDelay": true}
-          }
-        });
-      }
-
-      // 2. Variant B: ECH Config List (if ech= is present in the URI)
-      final Map<String, dynamic> echCfg =
-          jsonDecode(jsonEncode(baseCfg)) as Map<String, dynamic>;
-      if (echParam.isNotEmpty &&
-          echCfg['outbounds'] is List &&
-          (echCfg['outbounds'] as List).isNotEmpty) {
-        final Map<String, dynamic> out0 = (echCfg['outbounds'] as List)[0];
-        if (out0['streamSettings'] is Map &&
-            out0['streamSettings']['tlsSettings'] is Map) {
-          out0['streamSettings']['tlsSettings']['echConfigList'] = echParam;
-        }
-      }
-
-      // 3. Variant C: Clean Direct WS+TLS (with path without ?ed=2048 fallback)
-      final Map<String, dynamic> cleanPathCfg =
-          jsonDecode(jsonEncode(fragCfg)) as Map<String, dynamic>;
-      if (cleanPathCfg['outbounds'] is List &&
-          (cleanPathCfg['outbounds'] as List).isNotEmpty) {
-        final Map<String, dynamic> out0 = (cleanPathCfg['outbounds'] as List)[0];
-        if (out0['streamSettings'] is Map &&
-            out0['streamSettings']['wsSettings'] is Map) {
-          String p = (out0['streamSettings']['wsSettings']['path'] ?? '/').toString();
-          if (p.contains('?ed=')) {
-            p = p.split('?ed=').first;
-            if (p.isEmpty) p = '/';
-            out0['streamSettings']['wsSettings']['path'] = p;
-          }
-        }
-      }
-
-      final List<String> variants = [
-        jsonEncode(fragCfg),
-        jsonEncode(cleanPathCfg),
-        if (echParam.isNotEmpty) jsonEncode(echCfg),
-        jsonEncode(baseCfg),
-      ];
-
       final String remarkName = _extractRemarkName(uri, parser);
       final String detectedCode = _guessCountryCodeFromName(remarkName);
       final String proto = uri.split('://').first.toUpperCase();
@@ -653,8 +594,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       return ServerNode(
         rawUri: uri,
         name: remarkName,
-        configJson: variants.first,
-        configVariants: variants,
+        configJson: jsonEncode(baseCfg),
         protocol: proto,
         address: host,
         port: port,
@@ -791,7 +731,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         _servers
           ..clear()
           ..addAll(parsedNodes);
-        _selectedServer ??= _servers.first;
       }
 
       await _saveStateToDisk();
@@ -802,7 +741,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       setState(() {
         isSyncingSubs = false;
         if (!isConnected) {
-          statusMessage = '${_servers.length} VIP servers ready';
+          statusMessage = _isAutoMode
+              ? 'Auto Mode • ${_servers.length} servers ready'
+              : '${_selectedServer?.countryName ?? "Server"} selected';
         }
       });
     }
@@ -911,7 +852,32 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return String.fromCharCodes([first, second]);
   }
 
-  Widget _buildHighQualityFlag(String countryCode, {double size = 32}) {
+  Widget _buildHighQualityFlag(String countryCode, {double size = 32, bool isAuto = false}) {
+    if (isAuto) {
+      return Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [_theme.primary, _theme.secondary],
+          ),
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: _theme.primary.withOpacity(0.35),
+              blurRadius: 6,
+            ),
+          ],
+        ),
+        child: Icon(
+          Icons.hdr_auto_rounded,
+          color: Colors.white,
+          size: size * 0.62,
+        ),
+      );
+    }
+
     final String cc = countryCode.trim().toLowerCase();
     if (cc.length != 2 || cc == 'un') {
       return Container(
@@ -968,12 +934,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       socket = await Socket.connect(
         host,
         port,
-        timeout: const Duration(milliseconds: 1200),
+        timeout: const Duration(milliseconds: 900),
       );
       sw.stop();
       await socket.close();
       final int ms = sw.elapsedMilliseconds;
-      // Reject fake local ISP hijacked responses under 20ms
       if (ms < 20) return -1;
       return ms;
     } catch (_) {
@@ -991,28 +956,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
     srv.tcpPing = tcp;
 
-    for (final String variantJson in srv.configVariants) {
-      try {
-        final int delay = await v2ray
-            .getServerDelay(
-              config: variantJson,
-              url: 'http://cp.cloudflare.com/generate_204',
-            )
-            .timeout(const Duration(milliseconds: 3500), onTimeout: () => -1);
+    try {
+      final int delay = await v2ray
+          .getServerDelay(
+            config: srv.configJson,
+            url: 'http://cp.cloudflare.com/generate_204',
+          )
+          .timeout(const Duration(milliseconds: 2200), onTimeout: () => -1);
 
-        if (delay >= 25 && delay < 4500) {
-          srv.configJson = variantJson;
-          srv.realPing = delay;
-          return delay;
-        }
-      } catch (_) {}
-    }
+      if (delay >= 20 && delay < 4000) {
+        srv.realPing = delay;
+        return delay;
+      }
+    } catch (_) {}
 
     return -1;
   }
 
   Future<void> _runTcpPingAll() async {
-    if (isTestingTcp || isTestingReal || _servers.isEmpty) return;
+    if (isTestingTcp || _servers.isEmpty) return;
 
     setState(() {
       isTestingTcp = true;
@@ -1034,58 +996,89 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
+  // Fast parallel Real Test with toggle-off support when tapped a second time
   Future<void> _runRealTestAll() async {
-    if (isTestingReal || isTestingTcp || _servers.isEmpty) return;
+    if (_servers.isEmpty) return;
+
+    // If already running, tapping again stops the scan immediately
+    if (isTestingReal) {
+      setState(() {
+        _cancelRealTest = true;
+        isTestingReal = false;
+        statusMessage = 'Real test stopped';
+      });
+      return;
+    }
 
     setState(() {
       isTestingReal = true;
-      statusMessage = 'Testing real tunnel delay...';
+      _cancelRealTest = false;
+      statusMessage = 'Running fast real test...';
     });
 
-    for (final srv in _servers) {
-      if (!mounted) break;
-      final int realMs = await _measureRealCorePing(srv);
-      srv.realPing = realMs;
-      setState(() {});
+    const int batchSize = 5;
+    for (int i = 0; i < _servers.length; i += batchSize) {
+      if (_cancelRealTest || !mounted) break;
+      final int end = min(i + batchSize, _servers.length);
+      final List<ServerNode> batch = _servers.sublist(i, end);
+
+      await Future.wait(batch.map((srv) async {
+        if (_cancelRealTest) return;
+        final int realMs = await _measureRealCorePing(srv);
+        if (!_cancelRealTest && mounted) {
+          setState(() {
+            srv.realPing = realMs;
+          });
+        }
+      }));
     }
 
     await _saveStateToDisk();
     if (mounted) {
       setState(() {
         isTestingReal = false;
-        statusMessage = 'Real test completed';
+        statusMessage = _cancelRealTest ? 'Real test stopped' : 'Real test completed';
+        _cancelRealTest = false;
       });
     }
   }
 
-  Future<void> _refreshSingleServerPing(ServerNode srv) async {
+  Future<void> _refreshSingleServerPing(ServerNode? srv) async {
     if (isRefreshingPing) return;
+    final ServerNode? target = srv ??
+        _connectedServer ??
+        _selectedServer ??
+        (_servers.isNotEmpty ? _servers.first : null);
+    if (target == null) return;
+
     setState(() => isRefreshingPing = true);
 
     try {
       int p = -1;
-      if (isConnected && _connectedServer?.address == srv.address) {
+      if (isConnected && _connectedServer?.address == target.address) {
         try {
           p = await v2ray
               .getConnectedServerDelay()
-              .timeout(const Duration(milliseconds: 3000), onTimeout: () => -1);
+              .timeout(const Duration(milliseconds: 2200), onTimeout: () => -1);
         } catch (_) {}
       }
       if (p < 20) {
-        p = await _measureRealCorePing(srv);
+        p = await _measureRealCorePing(target);
+      }
+      if (p < 20) {
+        p = await _measureTcpPing(target.address, target.port);
       }
 
       if (mounted) {
         setState(() {
           if (p >= 20) {
-            srv.realPing = p;
+            target.realPing = p;
+            target.tcpPing = p;
             currentPing = p;
-          } else {
-            srv.realPing = -1;
           }
         });
       }
-      await _resolveSingleServerCountry(srv);
+      await _resolveSingleServerCountry(target);
     } catch (_) {}
 
     if (mounted) {
@@ -1093,124 +1086,135 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
+  // Direct 1-shot connection without any multi-variant loop
   Future<bool> _startVpnWithNode(ServerNode node) async {
-    for (int i = 0; i < node.configVariants.length; i++) {
-      if (_userCancelled) return false;
-      final String candidateConfig = i == 0 ? node.configJson : node.configVariants[i];
-
-      try {
+    try {
+      if (_nativeVpnRunning || isConnected) {
         try {
           await v2ray.stopV2Ray();
         } catch (_) {}
-        await Future.delayed(const Duration(milliseconds: 300));
+        await Future.delayed(const Duration(milliseconds: 200));
+      }
 
-        _nativeVpnRunning = false;
-        await v2ray.startV2Ray(
-          remark: node.name,
-          config: candidateConfig,
-          blockedApps: null,
-          bypassSubnets: null,
-          proxyOnly: false,
-        );
+      _nativeVpnRunning = false;
+      await v2ray.startV2Ray(
+        remark: node.name,
+        config: node.configJson,
+        blockedApps: null,
+        bypassSubnets: null,
+        proxyOnly: false,
+      );
 
-        int waited = 0;
-        while (!_nativeVpnRunning && waited < 3500) {
-          if (_userCancelled) {
-            await v2ray.stopV2Ray();
-            return false;
-          }
-          await Future.delayed(const Duration(milliseconds: 150));
-          waited += 150;
-        }
-
-        if (!_nativeVpnRunning) {
+      int waited = 0;
+      while (!_nativeVpnRunning && waited < 3000) {
+        if (_userCancelled) {
           await v2ray.stopV2Ray();
-          continue;
+          return false;
         }
+        await Future.delayed(const Duration(milliseconds: 100));
+        waited += 100;
+      }
 
-        await Future.delayed(const Duration(milliseconds: 500));
-        int connectedDelay = -1;
+      if (!_nativeVpnRunning) {
+        await v2ray.stopV2Ray();
+        return false;
+      }
+
+      _connectedServer = node;
+      _resolveSingleServerCountry(node);
+
+      if (mounted) {
+        setState(() {
+          isConnected = true;
+          isConnecting = false;
+          currentPing = node.displayPing;
+          statusMessage = 'Connected • ${node.countryName}';
+        });
+      }
+
+      // Update live ping in the background without interrupting the tunnel
+      Future.delayed(const Duration(milliseconds: 600), () async {
+        if (!mounted || !isConnected || _connectedServer?.address != node.address) return;
         try {
-          connectedDelay = await v2ray
+          int delay = await v2ray
               .getConnectedServerDelay()
-              .timeout(const Duration(milliseconds: 3200), onTimeout: () => -1);
-        } catch (_) {}
-
-        if (connectedDelay >= 20 || node.realPing >= 20) {
-          node.configJson = candidateConfig;
-          if (connectedDelay >= 20) {
-            node.realPing = connectedDelay;
+              .timeout(const Duration(milliseconds: 2500), onTimeout: () => -1);
+          if (delay < 20) {
+            delay = await _measureTcpPing(node.address, node.port);
           }
-          _connectedServer = node;
-          _selectedServer = node;
-          _resolveSingleServerCountry(node);
-
-          if (mounted) {
+          if (delay >= 20 && mounted) {
             setState(() {
-              isConnected = true;
-              isConnecting = false;
-              currentPing = node.displayPing;
-              statusMessage = 'Connected • ${node.countryName}';
+              node.realPing = delay;
+              currentPing = delay;
             });
           }
-          return true;
-        } else {
-          await v2ray.stopV2Ray();
-        }
-      } catch (_) {
-        try {
-          await v2ray.stopV2Ray();
         } catch (_) {}
-      }
-    }
-    return false;
-  }
+      });
 
-  Future<void> _onConnectButtonPressed({ServerNode? specificServer}) async {
-    if ((isConnected || isConnecting) && specificServer == null) {
-      _userCancelled = true;
+      return true;
+    } catch (_) {
       try {
         await v2ray.stopV2Ray();
       } catch (_) {}
+      return false;
+    }
+  }
+
+  // Instant server switch when already connected, or simple selection when disconnected
+  Future<void> _onServerItemTapped(ServerNode? srv, {required bool isAutoItem}) async {
+    if (isAutoItem) {
       setState(() {
-        isConnected = false;
-        isConnecting = false;
-        _nativeVpnRunning = false;
-        statusMessage = 'Disconnected';
+        _isAutoMode = true;
+        _selectedServer = null;
+        if (!isConnected) {
+          statusMessage = 'Auto Mode • Tap START to connect';
+        }
       });
+      if (isConnected) {
+        await _connectAutoBestServer();
+      }
       return;
     }
 
-    final bool hasPerm = await v2ray.requestPermission();
-    if (!hasPerm) {
-      setState(() => statusMessage = 'VPN Permission Required');
-      return;
-    }
+    if (srv == null) return;
 
     setState(() {
+      _isAutoMode = false;
+      _selectedServer = srv;
+      if (srv.displayPing > 0) {
+        currentPing = srv.displayPing;
+      }
+      if (!isConnected) {
+        statusMessage = 'Selected ${srv.countryName} • Tap START';
+      }
+    });
+
+    // If already connected to another server, switch immediately in 1 shot
+    if (isConnected && _connectedServer?.address != srv.address) {
+      setState(() {
+        isConnecting = true;
+        _userCancelled = false;
+        statusMessage = 'Switching to ${srv.countryName}...';
+      });
+      final bool ok = await _startVpnWithNode(srv);
+      if (!ok && mounted) {
+        setState(() {
+          isConnecting = false;
+          statusMessage = 'Failed to switch to ${srv.countryName}';
+        });
+      }
+    }
+  }
+
+  Future<void> _connectAutoBestServer() async {
+    setState(() {
       isConnecting = true;
-      isConnected = false;
       _userCancelled = false;
-      statusMessage = 'Finding optimal tunnel...';
+      statusMessage = 'Auto Mode • Finding fastest server...';
     });
 
     if (_servers.isEmpty) {
       _loadBuiltInEighteenServers();
-    }
-
-    if (specificServer != null) {
-      setState(() {
-        statusMessage = 'Verifying ${specificServer.address}...';
-      });
-      await _measureRealCorePing(specificServer);
-      final bool ok = await _startVpnWithNode(specificServer);
-      if (!ok && mounted) {
-        setState(() {
-          isConnecting = false;
-          statusMessage = 'Server unreachable • Try another node';
-        });
-      }
-      return;
     }
 
     final List<ServerNode> alive = [];
@@ -1232,28 +1236,75 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       return;
     }
 
-    alive.sort((a, b) => a.tcpPing.compareTo(b.tcpPing));
+    alive.sort((a, b) => a.displayPing.compareTo(b.displayPing));
 
     for (final candidate in alive) {
       if (_userCancelled) break;
       if (mounted) {
         setState(() {
-          statusMessage = 'Testing ${candidate.address} (${candidate.tcpPing} ms)...';
+          statusMessage = 'Connecting to ${candidate.countryName} (${candidate.tcpPing} ms)...';
         });
       }
-
-      final int realMs = await _measureRealCorePing(candidate);
-      if (realMs >= 20) {
-        final bool connected = await _startVpnWithNode(candidate);
-        if (connected) return;
-      }
+      final bool connected = await _startVpnWithNode(candidate);
+      if (connected) return;
     }
 
     if (mounted && !_userCancelled) {
       setState(() {
         isConnecting = false;
         isConnected = false;
-        statusMessage = 'All nodes timed out • Tap to retry';
+        statusMessage = 'Could not establish connection';
+      });
+    }
+  }
+
+  Future<void> _onConnectButtonPressed() async {
+    if (isConnected || isConnecting) {
+      _userCancelled = true;
+      try {
+        await v2ray.stopV2Ray();
+      } catch (_) {}
+      setState(() {
+        isConnected = false;
+        isConnecting = false;
+        _nativeVpnRunning = false;
+        statusMessage = _isAutoMode
+            ? 'Disconnected • Auto Mode'
+            : 'Disconnected • ${_selectedServer?.countryName ?? "Ready"}';
+      });
+      return;
+    }
+
+    final bool hasPerm = await v2ray.requestPermission();
+    if (!hasPerm) {
+      setState(() => statusMessage = 'VPN Permission Required');
+      return;
+    }
+
+    if (_servers.isEmpty) {
+      _loadBuiltInEighteenServers();
+    }
+
+    // If Auto is selected, scan and connect to the best server
+    if (_isAutoMode || _selectedServer == null) {
+      await _connectAutoBestServer();
+      return;
+    }
+
+    // If a specific server is selected, connect to it directly in 1 shot
+    final ServerNode target = _selectedServer!;
+    setState(() {
+      isConnecting = true;
+      isConnected = false;
+      _userCancelled = false;
+      statusMessage = 'Connecting to ${target.countryName}...';
+    });
+
+    final bool ok = await _startVpnWithNode(target);
+    if (!ok && mounted && !_userCancelled) {
+      setState(() {
+        isConnecting = false;
+        statusMessage = 'Server unreachable • Try Auto or another node';
       });
     }
   }
@@ -1430,6 +1481,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ? _theme.connected
         : (isConnecting ? Colors.amberAccent : _theme.primary);
 
+    final ServerNode? activeDisplayNode =
+        isConnected ? _connectedServer : _selectedServer;
+
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -1546,14 +1600,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         children: [
                           // Animated Power Orb
                           GestureDetector(
-                            onTap: () => _onConnectButtonPressed(),
+                            onTap: _onConnectButtonPressed,
                             child: AnimatedBuilder(
                               animation: _pulseController,
                               builder: (context, child) {
                                 final double pulse = _pulseController.value;
                                 return Container(
-                                  width: 106,
-                                  height: 106,
+                                  width: 104,
+                                  height: 104,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
                                     gradient: LinearGradient(
@@ -1590,7 +1644,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                           isConnecting
                                               ? Icons.autorenew_rounded
                                               : Icons.power_settings_new_rounded,
-                                          size: 36,
+                                          size: 35,
                                           color: Colors.white,
                                         ),
                                         const SizedBox(height: 4),
@@ -1612,58 +1666,108 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                               },
                             ),
                           ),
-                          const SizedBox(width: 16),
+                          const SizedBox(width: 14),
 
-                          // Connection Info & Active Node
+                          // Connection Info & Active Node + Clickable Ping Badge
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: statusAccent.withOpacity(0.15),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        width: 7,
-                                        height: 7,
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: statusAccent.withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            width: 7,
+                                            height: 7,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: statusAccent,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            isConnected
+                                                ? 'PROTECTED • ${v2rayStatus.duration}'
+                                                : (isConnecting
+                                                    ? 'CONNECTING...'
+                                                    : 'DISCONNECTED'),
+                                            style: TextStyle(
+                                              fontSize: 9.5,
+                                              fontWeight: FontWeight.w800,
+                                              color: statusAccent,
+                                              letterSpacing: 0.5,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    // Clickable Ping Pill right next to connection status
+                                    GestureDetector(
+                                      onTap: () => _refreshSingleServerPing(activeDisplayNode),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
                                         decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: statusAccent,
+                                          color: _theme.surface,
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: Colors.amberAccent.withOpacity(0.4),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            if (isRefreshingPing)
+                                              const SizedBox(
+                                                width: 10,
+                                                height: 10,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 1.6,
+                                                  color: Colors.amberAccent,
+                                                ),
+                                              )
+                                            else
+                                              const Icon(
+                                                Icons.bolt_rounded,
+                                                size: 12,
+                                                color: Colors.amberAccent,
+                                              ),
+                                            const SizedBox(width: 3),
+                                            Text(
+                                              currentPing > 0 ? '$currentPing ms' : 'Ping',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w800,
+                                                color: Colors.amberAccent,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        isConnected
-                                            ? 'PROTECTED • ${v2rayStatus.duration}'
-                                            : (isConnecting
-                                                ? 'CONNECTING...'
-                                                : 'DISCONNECTED'),
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w800,
-                                          color: statusAccent,
-                                          letterSpacing: 0.6,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
                                 const SizedBox(height: 10),
                                 Row(
                                   children: [
                                     _buildHighQualityFlag(
-                                      _connectedServer?.countryCode ??
-                                          _selectedServer?.countryCode ??
-                                          'UN',
+                                      activeDisplayNode?.countryCode ?? 'UN',
                                       size: 28,
+                                      isAuto: !isConnected && _isAutoMode,
                                     ),
                                     const SizedBox(width: 10),
                                     Expanded(
@@ -1671,9 +1775,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            _connectedServer?.countryName ??
-                                                _selectedServer?.countryName ??
-                                                'Auto Best Server',
+                                            !isConnected && _isAutoMode
+                                                ? 'Auto (Best Server)'
+                                                : (activeDisplayNode?.countryName ??
+                                                    'Auto (Best Server)'),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: const TextStyle(
@@ -1705,7 +1810,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
                       const SizedBox(height: 16),
 
-                      // 3-Column Metrics Bar (Download | Upload | Ping)
+                      // 3-Column Metrics Bar (Download | Upload | Clickable Latency)
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,
@@ -1742,19 +1847,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             Container(width: 1, height: 28, color: Colors.white12),
                             Expanded(
                               child: GestureDetector(
-                                onTap: () {
-                                  final ServerNode? target = _connectedServer ??
-                                      _selectedServer ??
-                                      (_servers.isNotEmpty ? _servers.first : null);
-                                  if (target != null) {
-                                    _refreshSingleServerPing(target);
-                                  }
-                                },
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => _refreshSingleServerPing(activeDisplayNode),
                                 child: _buildMetricItem(
                                   icon: Icons.bolt_rounded,
                                   color: Colors.amberAccent,
-                                  label: 'LATENCY',
-                                  value: currentPing > 0 ? '$currentPing ms' : '-- ms',
+                                  label: 'LATENCY ↻',
+                                  isLoading: isRefreshingPing,
+                                  value: currentPing > 0 ? '$currentPing ms' : 'Tap to test',
                                 ),
                               ),
                             ),
@@ -1772,7 +1872,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'VIP NODES (${_servers.length})',
+                      'SERVERS (AUTO + ${_servers.length})',
                       style: const TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w800,
@@ -1791,10 +1891,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         ),
                         const SizedBox(width: 8),
                         _buildActionPill(
-                          label: 'Real Test',
-                          icon: Icons.verified_rounded,
+                          label: isTestingReal ? 'Stop Test' : 'Real Test',
+                          icon: isTestingReal
+                              ? Icons.stop_circle_outlined
+                              : Icons.verified_rounded,
                           isLoading: isTestingReal,
-                          color: _theme.connected,
+                          color: isTestingReal ? Colors.redAccent : _theme.connected,
                           onTap: _runRealTestAll,
                         ),
                       ],
@@ -1804,17 +1906,22 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
                 const SizedBox(height: 10),
 
-                // Server List
+                // Server List (Index 0 is always "Auto", followed by all servers)
                 Expanded(
                   child: ListView.separated(
-                    itemCount: _servers.length,
+                    itemCount: _servers.length + 1,
                     separatorBuilder: (_, __) => const SizedBox(height: 9),
-                    itemBuilder: (context, index) {
+                    itemBuilder: (context, listIndex) {
+                      if (listIndex == 0) {
+                        return _buildAutoServerTile();
+                      }
+
+                      final int index = listIndex - 1;
                       final ServerNode srv = _servers[index];
                       final bool isThisConnected =
                           isConnected && _connectedServer?.address == srv.address;
                       final bool isThisSelected =
-                          _selectedServer?.address == srv.address;
+                          !_isAutoMode && _selectedServer?.address == srv.address;
 
                       final int pingVal = srv.displayPing;
                       final Color pingColor = pingVal <= 0
@@ -1826,17 +1933,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                   : Colors.redAccent));
 
                       return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _selectedServer = srv;
-                            if (srv.displayPing > 0) {
-                              currentPing = srv.displayPing;
-                            }
-                          });
-                          _onConnectButtonPressed(specificServer: srv);
-                        },
+                        onTap: () => _onServerItemTapped(srv, isAutoItem: false),
                         child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
+                          duration: const Duration(milliseconds: 180),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 14,
                             vertical: 12,
@@ -1844,15 +1943,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           decoration: BoxDecoration(
                             color: isThisConnected
                                 ? _theme.connected.withOpacity(0.12)
-                                : _theme.card,
+                                : (isThisSelected
+                                    ? _theme.primary.withOpacity(0.10)
+                                    : _theme.card),
                             borderRadius: BorderRadius.circular(18),
                             border: Border.all(
                               color: isThisConnected
                                   ? _theme.connected
                                   : (isThisSelected
-                                      ? _theme.primary.withOpacity(0.6)
+                                      ? _theme.primary
                                       : _theme.cardBorder),
-                              width: isThisConnected ? 1.6 : 1.0,
+                              width: (isThisConnected || isThisSelected) ? 1.6 : 1.0,
                             ),
                           ),
                           child: Row(
@@ -1965,6 +2066,88 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  Widget _buildAutoServerTile() {
+    final bool isAutoActive = _isAutoMode;
+    return GestureDetector(
+      onTap: () => _onServerItemTapped(null, isAutoItem: true),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: isAutoActive
+              ? _theme.primary.withOpacity(0.14)
+              : _theme.card,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: isAutoActive ? _theme.primary : _theme.cardBorder,
+            width: isAutoActive ? 1.6 : 1.0,
+          ),
+        ),
+        child: Row(
+          children: [
+            _buildHighQualityFlag('UN', size: 36, isAuto: true),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _theme.connected.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'SMART',
+                          style: TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w900,
+                            color: _theme.connected,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                      Text(
+                        'Auto',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          color: isAutoActive ? Colors.white : Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Automatically tests & connects to the fastest server',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.white54,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              isAutoActive
+                  ? Icons.check_circle_rounded
+                  : Icons.radio_button_unchecked_rounded,
+              color: isAutoActive ? _theme.primary : Colors.white30,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTopIconButton({
     required IconData icon,
     required VoidCallback onTap,
@@ -2001,13 +2184,24 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     required Color color,
     required String label,
     required String value,
+    bool isLoading = false,
   }) {
     return Column(
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: color, size: 13),
+            if (isLoading)
+              SizedBox(
+                width: 11,
+                height: 11,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.6,
+                  color: color,
+                ),
+              )
+            else
+              Icon(icon, color: color, size: 13),
             const SizedBox(width: 4),
             Text(
               label,
